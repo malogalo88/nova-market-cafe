@@ -21,6 +21,7 @@ import {
   fetchPublicConfig,
   fetchSessionOrders,
   postPublicOrder,
+  serverWasProbed,
   type PublicConfig,
 } from "../lib/storage";
 
@@ -72,7 +73,10 @@ export default function QrCustomer(): React.ReactElement {
   const db = useAppStore((s) => s.db);
   const mode = useAppStore((s) => s.mode);
   const storeReady = useAppStore((s) => s.ready);
-  const isRemote = mode === "server";
+  // Customer ordering must never depend on staff boot state. If the API has
+  // been detected at all this session, always talk to it directly — even if
+  // the rest of the app degraded to local mode after a transient boot error.
+  const isRemote = mode === "server" || serverWasProbed();
 
   const [cart, setCart] = useState<Cart>({});
   const [search, setSearch] = useState("");

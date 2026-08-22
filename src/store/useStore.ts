@@ -242,32 +242,44 @@ async function initServerMode(
   }
 
   // Not signed in yet: show the login screen against public boot info only.
-  try {
-    const boot = await fetchBootInfo();
-    if (typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", boot.theme === "dark");
+  // Two attempts — one retry absorbs cold database connections / transient
+  // serverless errors so a single hiccup can't kick a device into local mode.
+  let booted = false;
+  let bootErr: unknown = null;
+  for (let attempt = 0; attempt < 2 && !booted; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((res) => setTimeout(res, 1200));
+      const boot = await fetchBootInfo();
+      if (typeof document !== "undefined") {
+        document.documentElement.classList.toggle("dark", boot.theme === "dark");
+      }
+      const pseudo = buildEmptyDB();
+      pseudo.settings.businessName = boot.businessName;
+      pseudo.settings.logo = boot.logo;
+      pseudo.settings.theme = boot.theme;
+      pseudo.settings.currencySymbol = boot.currencySymbol;
+      pseudo.settings.onboardingComplete = true; // already set up — go straight to login
+      pseudo.employees = boot.employees.map((e) => ({
+        id: e.id,
+        name: e.name,
+        username: e.username,
+        role: e.role,
+        pin: "", // PINs never leave the server; verification happens server-side
+        status: "active",
+        joinedAt: new Date().toISOString(),
+      }));
+      saveSession(null);
+      cachedSession = null;
+      set({ db: pseudo, ready: true, serverAuthed: false, bootEmployees: boot.employees, sessionEmployeeId: null });
+      booted = true;
+    } catch (err) {
+      bootErr = err;
     }
-    const pseudo = buildEmptyDB();
-    pseudo.settings.businessName = boot.businessName;
-    pseudo.settings.logo = boot.logo;
-    pseudo.settings.theme = boot.theme;
-    pseudo.settings.currencySymbol = boot.currencySymbol;
-    pseudo.settings.onboardingComplete = true; // already set up — go straight to login
-    pseudo.employees = boot.employees.map((e) => ({
-      id: e.id,
-      name: e.name,
-      username: e.username,
-      role: e.role,
-      pin: "", // PINs never leave the server; verification happens server-side
-      status: "active",
-      joinedAt: new Date().toISOString(),
-    }));
-    saveSession(null);
-    cachedSession = null;
-    set({ db: pseudo, ready: true, serverAuthed: false, bootEmployees: boot.employees, sessionEmployeeId: null });
-  } catch (err) {
-    console.error("[server] boot failed", err);
-    // Server vanished between probe and boot — degrade to local mode.
+  }
+  if (!booted) {
+    console.error("[server] boot failed twice", bootErr);
+    // Server is genuinely unreachable right now — degrade to local mode.
+    // (Customer pages keep using the API directly via serverWasProbed().)
     const local = await defaultAdapter.load();
     set({ mode: "local", db: local, ready: true });
   }

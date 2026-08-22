@@ -172,11 +172,22 @@ async function api(path: string, opts: RequestInit = {}, timeoutMs = 10000): Pro
 
 /** Is this page being served by the NovaPOS server? Retried because a freshly
  * deployed serverless function may need several seconds to cold-start. */
+let serverProbed = false;
+
+/** True once any health check has succeeded this session. Customer pages use
+ * this to keep talking to the API even if a later boot step hiccups. */
+export function serverWasProbed(): boolean {
+  return serverProbed;
+}
+
 export async function probeServer(): Promise<boolean> {
   for (const timeoutMs of [3500, 3500]) {
     try {
       const r = await api("/api/health", {}, timeoutMs);
-      if (r.ok) return true;
+      if (r.ok) {
+        serverProbed = true;
+        return true;
+      }
     } catch {
       /* retry */
     }

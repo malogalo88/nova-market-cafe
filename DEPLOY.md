@@ -63,6 +63,22 @@ npm start          # build + serve dist/ and /api on http://0.0.0.0:8787
 
 Handy at the counter; not required for phone ordering.
 
+## 4. REQUIRED: Vercel Deployment Protection
+
+Customer QR links must open **without any Vercel login**. If scanning the QR
+shows a "Vercel Authentication" sign-in page, fix it here:
+
+**Vercel Dashboard → your project → Settings → Deployment Protection**
+
+- **Vercel Authentication**: set to **Disabled**
+  (or "Standard Protection", which protects only preview/development URLs and
+  leaves production public -- never "All", which would wall off customers).
+- **Password Protection**: must be off (Pro feature; walls off every route).
+
+Nothing else is needed: staff pages are protected by the app itself (PIN
+sign-in + signed tokens on `/api/db`, `/api/staff/*`), not by Vercel. Customer
+routes (`/api/public/*`) require no credentials by design.
+
 ## Troubleshooting
 
 **Build fails on Vercel with TypeScript import errors (TS2835)?**
