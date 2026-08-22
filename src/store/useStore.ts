@@ -34,12 +34,14 @@ import {
   fetchBootInfo,
   getAuthToken,
   httpAdapter,
+  isDbEnvelope,
   normalizeDB,
   probeServer,
   setAuthToken,
   UnauthorizedError,
   type BootInfo,
 } from "../lib/storage";
+import { smartPoll } from "../lib/smartPoll";
 
 export type { CartCalcLine } from "../lib/pricing";
 
@@ -180,30 +182,35 @@ export function currentPerms(): Permissions {
 }
 
 // ── Server mode bootstrap ───────────────────────────────────────────────────
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollCleanup: (() => void) | null = null;
 /** Set while server saves are pending — polling pauses so it never clobbers
  *  an optimistic edit that hasn't reached the server yet. */
 let savesInFlightRef = 0;
 
 function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+  if (pollCleanup) {
+    pollCleanup();
+    pollCleanup = null;
   }
 }
 
 function startPolling(
   set: (partial: Partial<AppStoreState & PosSlice>) => void,
-  isInFlight: () => boolean
+  isInFlight: () => boolean,
+  getRev: () => number
 ): void {
-  if (pollTimer) return;
+  if (pollCleanup) return;
   // Staff screens stay live: phone orders appear within a few seconds.
-  pollTimer = setInterval(() => {
-    if (typeof document !== "undefined" && document.hidden) return;
+  // smartPoll pauses in background tabs and refreshes instantly on focus;
+  // the revision header makes unchanged polls nearly free for the server.
+  pollCleanup = smartPoll(() => {
     if (isInFlight()) return;
     httpAdapter
-      .loadEnvelope!()
-      .then((env) => set({ db: env.db, dbRev: env.rev, ready: true, serverAuthed: true }))
+      .loadEnvelope!(getRev())
+      .then((env) => {
+        if (!isDbEnvelope(env)) return; // already up to date
+        set({ db: env.db, dbRev: env.rev, ready: true, serverAuthed: true });
+      })
       .catch(() => {
         /* transient network hiccup or signed out elsewhere — keep current view */
       });
@@ -218,6 +225,7 @@ async function initServerMode(
   if (token) {
     try {
       const env = await httpAdapter.loadEnvelope!(); // throws UnauthorizedError if token expired
+      if (!isDbEnvelope(env)) throw new Error("Unexpected unchanged reply on initial load");
       const fresh = env.db;
       if (typeof document !== "undefined") {
         document.documentElement.classList.toggle("dark", fresh.settings.theme === "dark");
@@ -233,7 +241,7 @@ async function initServerMode(
         serverAuthed: true,
         sessionEmployeeId: stillValid ? session : null,
       });
-      startPolling(set, () => savesInFlightRef > 0);
+      startPolling(set, () => savesInFlightRef > 0, () => get().dbRev);
       return;
     } catch (err) {
       if (!(err instanceof UnauthorizedError)) console.error("[server] initial load failed", err);
@@ -503,6 +511,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
           const { token, employeeId } = await apiLogin(usernameOrId.trim(), pin.trim());
           setAuthToken(token);
           const env = await httpAdapter.loadEnvelope!();
+          if (!isDbEnvelope(env)) throw new Error("Unexpected unchanged reply on sign-in");
           const fresh = env.db;
           const emp = fresh.employees.find((e) => e.id === employeeId);
           if (!emp || emp.status !== "active") {
@@ -515,7 +524,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
             document.documentElement.classList.toggle("dark", fresh.settings.theme === "dark");
           }
           set({ db: fresh, dbRev: env.rev, ready: true, serverAuthed: true, sessionEmployeeId: employeeId });
-          startPolling(set, () => savesInFlightRef > 0);
+          startPolling(set, () => savesInFlightRef > 0, () => get().dbRev);
           mutate((d) =>
             logActivity(d, { type: "login", action: "Signed in", detail: `${emp.role} signed in`, employeeId })
           );
@@ -577,7 +586,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         const added = await ensureQrCodesOnServer();
         if (added.length) {
           const env = await httpAdapter.loadEnvelope!();
-          if (env) set({ db: env.db, dbRev: env.rev });
+          if (isDbEnvelope(env)) set({ db: env.db, dbRev: env.rev });
         }
         return { ok: true, added };
       } catch (err) {

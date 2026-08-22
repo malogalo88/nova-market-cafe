@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Check,
@@ -25,6 +25,7 @@ import {
   serverWasProbed,
   type PublicConfig,
 } from "../lib/storage";
+import { smartPoll } from "../lib/smartPoll";
 
 type Cart = Record<string, number>; // productId → qty
 
@@ -119,6 +120,8 @@ export default function QrCustomer(): React.ReactElement {
   const [remoteCfg, setRemoteCfg] = useState<PublicConfig | null>(null);
   const [remoteOrders, setRemoteOrders] = useState<OrderView[]>([]);
   const [netError, setNetError] = useState("");
+  // Latest pull functions so user actions can refresh immediately.
+  const refreshRef = useRef<{ pullCfg: () => void; pullOrders: () => void } | null>(null);
 
   const sessionId = useMemo(() => getQrSessionId(), []);
 
@@ -161,14 +164,20 @@ export default function QrCustomer(): React.ReactElement {
         if (alive) setRemoteOrders(o);
       }).catch(() => {});
     };
-    pullCfg();
-    pullOrders();
-    const t1 = setInterval(pullCfg, 6000);
-    const t2 = setInterval(pullOrders, 4000);
+    // Handlers (place/cancel) call these for an instant refresh instead of
+    // waiting for the next poll tick.
+    refreshRef.current = { pullCfg, pullOrders };
+    // smartPoll: immediate first pull, then steady cadence while visible,
+    // paused in background tabs, instant refresh on focus/return.
+    // Config polls are cheap now (ETag/304); orders stay tight so status
+    // changes ("your order is ready") land fast.
+    const c1 = smartPoll(pullCfg, 4000);
+    const c2 = smartPoll(pullOrders, 3000);
     return () => {
       alive = false;
-      clearInterval(t1);
-      clearInterval(t2);
+      refreshRef.current = null;
+      c1();
+      c2();
     };
   }, [isRemote, qrId, sessionId]);
 
@@ -308,6 +317,8 @@ export default function QrCustomer(): React.ReactElement {
         });
         view = { ...res, items: res.items.map((i) => ({ qty: i.qty })) };
         setRemoteOrders((prev) => [view, ...prev.filter((o) => o.id !== view.id)]);
+        // Stock just changed server-side — refresh the menu immediately.
+        refreshRef.current?.pullCfg();
       } else {
         const res2 = useAppStore.getState().placeQrOrder({
           qrCodeId: qrId || null,
@@ -340,11 +351,10 @@ export default function QrCustomer(): React.ReactElement {
   function cancelOrder(o: OrderView): void {
     if (isRemote) {
       cancelPublicOrder(o.id, sessionId)
-        .then(() =>
-          fetchSessionOrders(sessionId).then((list) =>
-            setRemoteOrders(list.map((v) => ({ ...v, items: v.items.map((i) => ({ qty: i.qty })) })))
-          )
-        )
+        .then(() => {
+          refreshRef.current?.pullOrders(); // instant list update
+          refreshRef.current?.pullCfg(); // stock was released — menu too
+        })
         .catch((err) => setError(err instanceof Error ? err.message : "Could not cancel."));
     } else {
       const res = useAppStore.getState().cancelQrOrderByCustomer(o.id, sessionId);

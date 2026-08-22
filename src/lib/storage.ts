@@ -44,13 +44,28 @@ export interface DbEnvelope {
   rev: number;
 }
 
+/** Reply variant when the server confirms the client already has the latest
+ * revision — no database body is shipped (bandwidth-efficient polling). */
+export interface UnchangedEnvelope {
+  unchanged: true;
+  rev: number;
+}
+
+export type Envelope = DbEnvelope | UnchangedEnvelope;
+
+export function isDbEnvelope(env: Envelope): env is DbEnvelope {
+  return "db" in env;
+}
+
 export interface DataAdapter {
   load: () => Promise<DB>;
   /** Persists the db. Server-backed adapters return the authoritative merged
    *  database + revision so the client can adopt it; null = nothing to adopt. */
   save: (db: DB, opts?: SaveOptions) => Promise<DbEnvelope | null>;
-  /** Same as load but also returns the server revision (server adapters only). */
-  loadEnvelope?: () => Promise<DbEnvelope>;
+  /** Same as load but also returns the server revision (server adapters only).
+   *  Passing knownRev lets the server reply "unchanged" when the client is
+   *  already up to date. */
+  loadEnvelope?: (knownRev?: number) => Promise<Envelope>;
 }
 
 function readLocal(): DB | null {
@@ -230,13 +245,21 @@ export async function ensureQrCodesOnServer(): Promise<string[]> {
 
 /** Full database adapter backed by the NovaPOS API (requires sign-in). */
 export const httpAdapter: DataAdapter = {
-  load: async () => (await httpAdapter.loadEnvelope!()).db,
-  loadEnvelope: async () => {
-    const r = await api("/api/db");
+  load: async () => {
+    const env = await httpAdapter.loadEnvelope!();
+    if (!isDbEnvelope(env)) throw new Error("Server reported no change on initial load");
+    return env.db;
+  },
+  loadEnvelope: async (knownRev?: number) => {
+    const r = await api(
+      "/api/db",
+      knownRev !== undefined ? { headers: { "X-NovaPOS-Rev": String(knownRev) } } : {}
+    );
     if (r.status === 401) throw new UnauthorizedError();
     if (!r.ok) throw new Error(`Server responded ${r.status}`);
-    const body = (await r.json()) as { ok: boolean; db?: DB; rev?: number };
-    if (!body.ok || !body.db || typeof body.rev !== "number") throw new Error("Malformed server response");
+    const body = (await r.json()) as { ok: boolean; db?: DB; rev?: number; unchanged?: boolean };
+    if (!body.ok || typeof body.rev !== "number") throw new Error("Malformed server response");
+    if (body.unchanged || !body.db) return { unchanged: true, rev: body.rev };
     return { db: body.db, rev: body.rev };
   },
   save: async (db, opts) => {
@@ -300,11 +323,23 @@ export interface PublicConfig {
   }>;
 }
 
+/** Last menu payload + its ETag, so repeat polls can be answered with an
+ *  empty 304 instead of the full menu. Keyed by nothing: the ETag already
+ *  encodes the payload (a different code ⇒ different body ⇒ 200). */
+let cfgCache: { etag: string; cfg: PublicConfig } | null = null;
+
 export async function fetchPublicConfig(codeId: string | null): Promise<PublicConfig> {
   const q = codeId ? `?code=${encodeURIComponent(codeId)}` : "";
-  const r = await api(`/api/public/config${q}`);
+  const r = await api(
+    `/api/public/config${q}`,
+    cfgCache ? { headers: { "If-None-Match": cfgCache.etag } } : {}
+  );
+  if (r.status === 304 && cfgCache) return cfgCache.cfg;
   if (!r.ok) throw new Error(`Server responded ${r.status}`);
-  return (await r.json()) as PublicConfig;
+  const cfg = (await r.json()) as PublicConfig;
+  const etag = r.headers.get("etag");
+  if (etag) cfgCache = { etag, cfg };
+  return cfg;
 }
 
 export interface PublicOrderView {

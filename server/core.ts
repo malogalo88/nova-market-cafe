@@ -115,13 +115,15 @@ async function tokenEmployeeId(req: IncomingMessage): Promise<string | null> {
 }
 
 // -- Helpers ------------------------------------------------------------------
-export function json(res: ServerResponse, status: number, body: unknown): void {
+export function json(res: ServerResponse, status: number, body: unknown, extraHeaders?: Record<string, string>): void {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match, X-NovaPOS-Rev",
+    "Access-Control-Expose-Headers": "ETag",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    ...extraHeaders,
   });
   res.end(JSON.stringify(body));
 }
@@ -362,6 +364,14 @@ export async function handleApiRequest(
         json(res, 401, { ok: false, error: "Sign in required." });
         return;
       }
+      // Bandwidth short-circuit for the 4-second staff poll: if the client
+      // already has this revision, reply with a tiny unchanged marker instead
+      // of the full database.
+      const knownRev = Number(req.headers["x-novapos-rev"]);
+      if (Number.isFinite(knownRev) && knownRev >= 0 && knownRev === snap.rev) {
+        json(res, 200, { ok: true, unchanged: true, rev: snap.rev });
+        return;
+      }
       json(res, 200, { ok: true, db: snap.db, rev: snap.rev });
       return;
     }
@@ -399,9 +409,12 @@ export async function handleApiRequest(
           return { db: current, changed: false, value: { ok: false, stale: true, rev } };
         }
         const merged = mergeDbs(current, incoming, mode);
-        // Wholesale uploads (browser migration) always re-guarantee printed
-        // QR ids so an uploaded dataset without codes cannot break posters.
-        const ensured = mode === "replace" ? ensureStandardQrCodes(merged) : [];
+        // Every accepted save re-guarantees the printed QR ids -- replace
+        // uploads, normal merges, all of them -- so no snapshot taken before
+        // the ids existed can ever push them out of the shared database.
+        // Deliberately paused/deleted-custom codes are never touched; only
+        // missing standard ids are recreated (active).
+        const ensured = ensureStandardQrCodes(merged);
         if (ensured.length) {
           logActivity(merged, {
             type: "system",
@@ -423,10 +436,30 @@ export async function handleApiRequest(
     }
 
     case "GET /api/public/config": {
+      // Self-healing for printed posters: if anything ever dropped one of the
+      // permanently printed ids from the shared database (an old snapshot
+      // saved before they existed, a manual restore, etc.), recreate it here
+      // so wall codes can never go dead. Read-only while all three exist, so
+      // the 6-second customer polling never writes. Only MISSING ids are
+      // recreated -- a code staff deliberately paused stays paused.
+      const pre = await store.get();
+      if (STANDARD_QR_CODES.some((s) => !pre.db.qrCodes.some((q) => q.id === s.id))) {
+        await store.mutate<string[]>((db) => {
+          const added = ensureStandardQrCodes(db);
+          if (added.length) {
+            logActivity(db, {
+              type: "system",
+              action: "Standard QR codes restored",
+              detail: `${added.join(", ")} (auto-heal on menu request)`,
+            });
+          }
+          return { db, changed: added.length > 0, value: added };
+        });
+      }
       const { db } = await store.get();
       const codeId = url.searchParams.get("code");
       const code = codeId ? db.qrCodes.find((q) => q.id === codeId) ?? null : null;
-      json(res, 200, {
+      const payload = {
         ...publicMenu(db),
         taxEnabled: db.settings.taxEnabled,
         taxRate: db.settings.taxRate,
@@ -434,7 +467,16 @@ export async function handleApiRequest(
         // A scanned code works only if it still exists and is active. Checked
         // server-side against the shared database -- never browser storage.
         codeValid: !!code && code.active,
-      });
+      };
+      // Menu polling happens every few seconds from every phone on site; an
+      // ETag turns repeat polls of an unchanged menu into empty 304 replies.
+      const etag = `"${crypto.createHash("sha1").update(JSON.stringify(payload)).digest("hex").slice(0, 20)}"`;
+      if (req.headers["if-none-match"] === etag) {
+        res.writeHead(304, { "Access-Control-Expose-Headers": "ETag", ETag: etag });
+        res.end();
+        return;
+      }
+      json(res, 200, payload, { ETag: etag });
       return;
     }
 
