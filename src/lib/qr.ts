@@ -2,14 +2,23 @@ import QRCode from "qrcode";
 import type { DB, QrCode } from "./types";
 import { esc } from "./receipts";
 
-/** The URL a customer's phone opens when scanning this code. */
-export function qrUrl(code: QrCode): string {
-  const base = `${window.location.origin}${window.location.pathname}`;
-  return `${base}#/order/${code.id}`;
+/** Where the app is (or will be) served — used when baking URLs into printed
+ *  QR codes. The optional publicBaseUrl lets the owner set their real
+ *  production address so posters survive redeploys, dev-server port changes,
+ *  and printing from a staging machine. */
+export function qrBase(db?: DB): string {
+  const configured = db?.settings.qr.publicBaseUrl?.trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  return `${window.location.origin}${window.location.pathname}`;
 }
 
-export async function qrDataUrl(code: QrCode, size = 512): Promise<string> {
-  return QRCode.toDataURL(qrUrl(code), {
+/** The URL a customer's phone opens when scanning this code. */
+export function qrUrl(code: QrCode, db?: DB): string {
+  return `${qrBase(db)}#/order/${code.id}`;
+}
+
+export async function qrDataUrl(code: QrCode, size = 512, db?: DB): Promise<string> {
+  return QRCode.toDataURL(qrUrl(code, db), {
     width: size,
     margin: 2,
     errorCorrectionLevel: "M",
@@ -29,6 +38,7 @@ export function printQrPoster(db: DB, code: QrCode, dataUrl: string): void {
   const s = db.settings;
   const win = window.open("", "_blank", "width=640,height=880");
   if (!win) return;
+  const onDevHost = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.local)$/i.test(new URL(qrBase(db)).hostname) && !s.qr.publicBaseUrl;
   win.document.write(`<!doctype html>
 <html>
 <head>
@@ -58,6 +68,7 @@ export function printQrPoster(db: DB, code: QrCode, dataUrl: string): void {
     <img class="qr" src="${dataUrl}" alt="QR code to order" />
     <div><span class="loc">${esc(code.label)}</span></div>
     <p class="how">${esc(s.qr.instructions || "Browse our products and place your order from your phone.")}</p>
+    ${onDevHost ? `<p class="how" style="color:#b45309">⚠ Printed from a development address — set your website address in Settings → QR Ordering before printing for customers.</p>` : ""}
     <div class="foot">${[s.address, s.phone].filter(Boolean).map(esc).join(" · ")}</div>
   </div>
   <script>window.onload = function () { window.focus(); window.print(); };</script>

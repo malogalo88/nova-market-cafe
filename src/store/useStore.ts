@@ -22,17 +22,25 @@ import type {
   QrOrder,
   QrOrderStatus,
 } from "../lib/types";
-import { defaultAdapter, normalizeDB, STORAGE_KEY } from "../lib/storage";
+import { defaultAdapter, STORAGE_KEY } from "../lib/storage";
 import { buildDemoDB, buildEmptyDB, defaultSettings } from "../lib/seed";
 import { uid, dayKey } from "../lib/format";
 import { ROLE_PERMISSIONS, type Permissions } from "../lib/permissions";
+import { computeCart, type CartCalcLine, type CartTotals } from "../lib/pricing";
+import { applyPlaceQrOrder } from "../lib/qrOrderCore";
+import {
+  apiLogin,
+  fetchBootInfo,
+  getAuthToken,
+  httpAdapter,
+  normalizeDB,
+  probeServer,
+  setAuthToken,
+  UnauthorizedError,
+  type BootInfo,
+} from "../lib/storage";
 
-export interface CartCalcLine extends CartLine {
-  product: Product;
-  unitPrice: number;
-  lineDiscount: number;
-  matchedPromos: string[];
-}
+export type { CartCalcLine } from "../lib/pricing";
 
 export interface CompleteSaleInput {
   paymentMethod: PaymentMethod;
@@ -140,7 +148,9 @@ function logActivity(
   if (db.activityLog.length > 1000) db.activityLog.length = 1000;
 }
 
-/** Full price calculation shared between POS live totals and final sale. */
+/** Full price calculation shared between POS live totals and final sale.
+ *  The pure implementation lives in lib/pricing.ts so the order server can
+ *  price phone orders with exactly the same rules. */
 export function calculateCart(
   db: DB,
   lines: CartLine[],
@@ -150,210 +160,11 @@ export function calculateCart(
     manualDiscount?: { type: "percent" | "fixed"; value: number } | null;
     pointsToRedeem?: number;
   }
-): {
-  calcLines: CartCalcLine[];
-  subtotal: number;
-  lineDiscounts: number;
-  orderDiscount: number;
-  orderDiscountLabel: string;
-  loyaltyDiscount: number;
-  pointsValue: number;
-  pointsRedeemed: number;
-  tax: number;
-  total: number;
-  error?: string;
-} {
-  const s = db.settings;
-  const calcLines: CartCalcLine[] = [];
-  let lineDiscounts = 0;
-
-  for (const line of lines) {
-    const product = db.products.find((p) => p.id === line.productId);
-    if (!product) continue;
-    let discount = 0;
-    const matched: string[] = [];
-    for (const promo of db.promotions) {
-      if (!isPromoActive(promo)) continue;
-      if (!promo.autoApply || promo.code) continue;
-      if (promo.type !== "bogo") continue;
-      if (promo.scope === "product" && promo.targetId === product.id) {
-        const groups = Math.floor(line.qty / Math.max(1, promo.buyQty + promo.getQty));
-        const free = groups * promo.getQty;
-        if (free > 0) {
-          discount += free * product.price;
-          matched.push(promo.name);
-        }
-      }
-      void promo.value;
-    }
-    for (const promo of db.promotions) {
-      if (!isPromoActive(promo)) continue;
-      if (!promo.autoApply || promo.code) continue;
-      if (promo.type === "bogo") continue;
-      const scopeMatch =
-        promo.scope === "category"
-          ? product.category === promo.targetId
-          : false;
-      const productMatch = promo.scope === "product" ? product.id === promo.targetId : false;
-      if (!scopeMatch && !productMatch) continue;
-      const base = product.price * line.qty;
-      const d = promo.type === "percent" ? (base * promo.value) / 100 : Math.min(promo.value, base);
-      if (d > 0) {
-        discount += d;
-        matched.push(promo.name);
-      }
-    }
-    lineDiscounts += discount;
-    calcLines.push({
-      ...line,
-      product,
-      unitPrice: product.price,
-      lineDiscount: Math.round(discount * 100) / 100,
-      matchedPromos: matched,
-    });
-  }
-
-  const grossSubtotal = calcLines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
-  const subtotal = grossSubtotal - lineDiscounts;
-
-  // Order-level discount: manual beats coupon beats automatic.
-  let orderDiscount = 0;
-  let orderDiscountLabel = "";
-  const perms = currentPerms();
-  if (opts.manualDiscount && opts.manualDiscount.value > 0) {
-    const md = opts.manualDiscount;
-    if (md.type === "percent" && md.value > perms.maxDiscountPercent) {
-      return {
-        calcLines,
-        subtotal: grossSubtotal,
-        lineDiscounts,
-        orderDiscount: 0,
-        orderDiscountLabel: "",
-        loyaltyDiscount: 0,
-        pointsValue: 0,
-        pointsRedeemed: 0,
-        tax: 0,
-        total: 0,
-        error: `Your role allows manual discounts up to ${perms.maxDiscountPercent}%.`,
-      };
-    }
-    orderDiscount =
-      md.type === "percent"
-        ? (subtotal * Math.min(md.value, 100)) / 100
-        : Math.min(md.value, subtotal);
-    orderDiscountLabel = md.type === "percent" ? `${md.value}% off` : "Manual discount";
-  } else if (opts.couponCode && opts.couponCode.trim()) {
-    const promo = db.promotions.find(
-      (p) => p.code && p.code.toLowerCase() === opts.couponCode!.trim().toLowerCase()
-    );
-    if (!promo) {
-      return emptyCalc(calcLines, grossSubtotal, lineDiscounts, "That coupon code doesn't exist.");
-    }
-    if (!isPromoActive(promo)) {
-      return emptyCalc(calcLines, grossSubtotal, lineDiscounts, "That coupon isn't active right now.");
-    }
-    if (subtotal < promo.minOrder) {
-      return emptyCalc(
-        calcLines,
-        grossSubtotal,
-        lineDiscounts,
-        `This coupon needs a minimum order of ${s.currencySymbol}${promo.minOrder.toFixed(2)}.`
-      );
-    }
-    orderDiscount =
-      promo.type === "percent"
-        ? (subtotal * promo.value) / 100
-        : Math.min(promo.value, subtotal);
-    orderDiscountLabel = promo.name;
-  } else {
-    const autos = db.promotions.filter(
-      (p) =>
-        isPromoActive(p) &&
-        p.autoApply &&
-        !p.code &&
-        p.scope === "order" &&
-        subtotal >= p.minOrder
-    );
-    let best = 0;
-    let bestName = "";
-    for (const p of autos) {
-      const d = p.type === "percent" ? (subtotal * p.value) / 100 : Math.min(p.value, subtotal);
-      if (d > best) {
-        best = d;
-        bestName = p.name;
-      }
-    }
-    if (best > 0) {
-      orderDiscount = best;
-      orderDiscountLabel = bestName;
-    }
-  }
-
-  // Loyalty level perk.
-  const customer = opts.customerId ? db.customers.find((c) => c.id === opts.customerId) : null;
-  let loyaltyDiscount = 0;
-  if (customer && s.loyalty.enabled) {
-    const level = [...s.loyalty.levels]
-      .sort((a, b) => b.threshold - a.threshold)
-      .find((l) => customer.totalSpent >= l.threshold);
-    if (level && level.perkPercent > 0) {
-      const baseAfter = Math.max(0, subtotal - orderDiscount);
-      loyaltyDiscount = (baseAfter * level.perkPercent) / 100;
-    }
-  }
-
-  // Points redemption.
-  let pointsRedeemed = 0;
-  let pointsValue = 0;
-  if (customer && s.loyalty.enabled && opts.pointsToRedeem && opts.pointsToRedeem > 0) {
-    const maxByBalance = Math.min(opts.pointsToRedeem, customer.loyaltyPoints);
-    pointsValue = maxByBalance / s.loyalty.pointsPerUnit;
-    const remainingTotal = Math.max(0, subtotal - orderDiscount - loyaltyDiscount);
-    if (pointsValue > remainingTotal) {
-      pointsValue = remainingTotal;
-      pointsRedeemed = Math.floor(remainingTotal * s.loyalty.pointsPerUnit);
-    } else {
-      pointsRedeemed = Math.floor(maxByBalance);
-    }
-  }
-
-  const discountedTotal = Math.max(0, subtotal - orderDiscount - loyaltyDiscount - pointsValue);
-  const tax = s.taxEnabled ? (discountedTotal * s.taxRate) / 100 : 0;
-  const total = Math.round((discountedTotal + tax) * 100) / 100;
-
-  return {
-    calcLines,
-    subtotal: Math.round(grossSubtotal * 100) / 100,
-    lineDiscounts: Math.round(lineDiscounts * 100) / 100,
-    orderDiscount: Math.round(orderDiscount * 100) / 100,
-    orderDiscountLabel,
-    loyaltyDiscount: Math.round(loyaltyDiscount * 100) / 100,
-    pointsValue: Math.round(pointsValue * 100) / 100,
-    pointsRedeemed,
-    tax: Math.round(tax * 100) / 100,
-    total,
-  };
-}
-
-function emptyCalc(
-  calcLines: CartCalcLine[],
-  grossSubtotal: number,
-  lineDiscounts: number,
-  error: string
-) {
-  return {
-    calcLines,
-    subtotal: Math.round(grossSubtotal * 100) / 100,
-    lineDiscounts: Math.round(lineDiscounts * 100) / 100,
-    orderDiscount: 0,
-    orderDiscountLabel: "",
-    loyaltyDiscount: 0,
-    pointsValue: 0,
-    pointsRedeemed: 0,
-    tax: 0,
-    total: 0,
-    error,
-  };
+): CartTotals {
+  return computeCart(db, lines, {
+    ...opts,
+    maxDiscountPercent: currentPerms().maxDiscountPercent,
+  });
 }
 
 let cachedSession: string | null = null;
@@ -367,14 +178,116 @@ export function currentPerms(): Permissions {
   return ROLE_PERMISSIONS[emp?.role ?? "cashier"];
 }
 
+// ── Server mode bootstrap ───────────────────────────────────────────────────
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+/** Set while server saves are pending — polling pauses so it never clobbers
+ *  an optimistic edit that hasn't reached the server yet. */
+let savesInFlightRef = 0;
+
+function stopPolling(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function startPolling(
+  set: (partial: Partial<AppStoreState & PosSlice>) => void,
+  isInFlight: () => boolean
+): void {
+  if (pollTimer) return;
+  // Staff screens stay live: phone orders appear within a few seconds.
+  pollTimer = setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (isInFlight()) return;
+    httpAdapter
+      .loadEnvelope!()
+      .then((env) => set({ db: env.db, dbRev: env.rev, ready: true, serverAuthed: true }))
+      .catch(() => {
+        /* transient network hiccup or signed out elsewhere — keep current view */
+      });
+  }, 4000);
+}
+
+async function initServerMode(
+  set: (partial: Partial<AppStoreState & PosSlice>) => void,
+  get: () => AppStoreState & PosSlice
+): Promise<void> {
+  const token = getAuthToken();
+  if (token) {
+    try {
+      const env = await httpAdapter.loadEnvelope!(); // throws UnauthorizedError if token expired
+      const fresh = env.db;
+      if (typeof document !== "undefined") {
+        document.documentElement.classList.toggle("dark", fresh.settings.theme === "dark");
+      }
+      const session = loadSession();
+      const stillValid = session && fresh.employees.some((e) => e.id === session && e.status === "active");
+      if (!stillValid) saveSession(null);
+      cachedSession = stillValid ? session : null;
+      set({
+        db: fresh,
+        dbRev: env.rev,
+        ready: true,
+        serverAuthed: true,
+        sessionEmployeeId: stillValid ? session : null,
+      });
+      startPolling(set, () => savesInFlightRef > 0);
+      return;
+    } catch (err) {
+      if (!(err instanceof UnauthorizedError)) console.error("[server] initial load failed", err);
+      setAuthToken(null); // stale/invalid token → fall through to login screen
+    }
+  }
+
+  // Not signed in yet: show the login screen against public boot info only.
+  try {
+    const boot = await fetchBootInfo();
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", boot.theme === "dark");
+    }
+    const pseudo = buildEmptyDB();
+    pseudo.settings.businessName = boot.businessName;
+    pseudo.settings.logo = boot.logo;
+    pseudo.settings.theme = boot.theme;
+    pseudo.settings.currencySymbol = boot.currencySymbol;
+    pseudo.settings.onboardingComplete = true; // already set up — go straight to login
+    pseudo.employees = boot.employees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      username: e.username,
+      role: e.role,
+      pin: "", // PINs never leave the server; verification happens server-side
+      status: "active",
+      joinedAt: new Date().toISOString(),
+    }));
+    saveSession(null);
+    cachedSession = null;
+    set({ db: pseudo, ready: true, serverAuthed: false, bootEmployees: boot.employees, sessionEmployeeId: null });
+  } catch (err) {
+    console.error("[server] boot failed", err);
+    // Server vanished between probe and boot — degrade to local mode.
+    const local = await defaultAdapter.load();
+    set({ mode: "local", db: local, ready: true });
+  }
+}
+
 interface AppStoreState {
   db: DB;
   ready: boolean;
   sessionEmployeeId: string | null;
+  /** "server" = shared backend (multi-device QR ordering); "local" = this browser only. */
+  mode: "local" | "server";
+  /** In server mode: has this device signed in and loaded the real database? */
+  serverAuthed: boolean;
+  /** Server-side revision of the loaded database (stale-write protection). */
+  dbRev: number;
+  bootEmployees?: Array<BootInfo["employees"][number]>;
   init: () => Promise<void>;
+  uploadLocalDbToServer: () => Promise<ActionResult>;
   currentUser: () => Employee | null;
   permissions: () => Permissions;
-  login: (usernameOrId: string, pin: string) => ActionResult;
+  login: (usernameOrId: string, pin: string) => Promise<ActionResult>;
   logout: () => void;
 
   saveProduct: (
@@ -437,7 +350,6 @@ interface AppStoreState {
   // ── QR self-ordering ────────────────────────────────────────────────────
   saveQrCode: (input: { id?: string; label: string; active?: boolean }, isNew: boolean) => ActionResult<QrCode>;
   deleteQrCode: (id: string) => void;
-  rotateQrCode: (id: string) => void;
   placeQrOrder: (input: {
     qrCodeId: string | null;
     sessionId: string;
@@ -468,14 +380,42 @@ interface PosSlice {
 }
 
 export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
+  // Number of in-flight server saves; polling pauses while > 0 so an
+  // optimistic edit is never clobbered by its own concurrent refresh.
+  let savesInFlight = 0;
+
   function mutate(fn: (draft: DB) => void): void {
     set((state) => {
       const draft = structuredClone(state.db);
       fn(draft);
-      defaultAdapter.save(draft);
       if (typeof document !== "undefined") {
         document.documentElement.classList.toggle("dark", draft.settings.theme === "dark");
       }
+      if (get().mode === "server") {
+        // Server mode: send the whole db with our base revision. The API
+        // merges anything that happened meanwhile (phone orders!) and
+        // returns the authoritative database, which we adopt.
+        const baseRev = get().dbRev;
+        savesInFlight++;
+        savesInFlightRef = savesInFlight;
+        httpAdapter
+          .save(draft, { baseRev, mode: "merge" })
+          .then((env) => {
+            if (env) set({ db: env.db, dbRev: env.rev });
+          })
+          .catch((err) => {
+            if (err instanceof UnauthorizedError) {
+              setAuthToken(null);
+              set({ sessionEmployeeId: null, serverAuthed: false });
+            }
+          })
+          .finally(() => {
+            savesInFlight--;
+            savesInFlightRef = savesInFlight;
+          });
+        return { db: draft };
+      }
+      void defaultAdapter.save(draft);
       return { db: draft };
     });
   }
@@ -484,10 +424,21 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
     db: buildEmptyDB(),
     ready: false,
     sessionEmployeeId: cachedSession,
+    mode: "local",
+    serverAuthed: false,
+    dbRev: 0,
     cart: [],
     cartCustomerId: null,
 
     init: async () => {
+      // If the NovaPOS server is reachable, all devices share its database —
+      // this is what makes wall QR codes work from any phone.
+      if (await probeServer()) {
+        set({ mode: "server" });
+        await initServerMode(set, get);
+        return;
+      }
+
       const db = await defaultAdapter.load();
       if (typeof document !== "undefined") {
         document.documentElement.classList.toggle("dark", db.settings.theme === "dark");
@@ -529,7 +480,35 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
 
     permissions: () => ROLE_PERMISSIONS[get().currentUser()?.role ?? "cashier"],
 
-    login: (usernameOrId, pin) => {
+    login: async (usernameOrId, pin) => {
+      if (get().mode === "server") {
+        // PIN verification happens on the server; the full database is only
+        // downloaded after a successful sign-in.
+        try {
+          const { token, employeeId } = await apiLogin(usernameOrId.trim(), pin.trim());
+          setAuthToken(token);
+          const env = await httpAdapter.loadEnvelope!();
+          const fresh = env.db;
+          const emp = fresh.employees.find((e) => e.id === employeeId);
+          if (!emp || emp.status !== "active") {
+            setAuthToken(null);
+            return { ok: false, error: "Account not found." };
+          }
+          cachedSession = employeeId;
+          saveSession(employeeId);
+          if (typeof document !== "undefined") {
+            document.documentElement.classList.toggle("dark", fresh.settings.theme === "dark");
+          }
+          set({ db: fresh, dbRev: env.rev, ready: true, serverAuthed: true, sessionEmployeeId: employeeId });
+          startPolling(set, () => savesInFlightRef > 0);
+          mutate((d) =>
+            logActivity(d, { type: "login", action: "Signed in", detail: `${emp.role} signed in`, employeeId })
+          );
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Sign-in failed." };
+        }
+      }
       const db = get().db;
       const emp = db.employees.find(
         (e) =>
@@ -547,16 +526,50 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
       return { ok: true };
     },
 
+    uploadLocalDbToServer: async () => {
+      if (get().mode !== "server") return { ok: false, error: "Not connected to the server." };
+      if (!get().serverAuthed) return { ok: false, error: "Sign in first, then upload." };
+      let localRaw: string | null = null;
+      try {
+        localRaw = localStorage.getItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      if (!localRaw) return { ok: false, error: "This browser has no locally stored data to upload." };
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(localRaw);
+      } catch {
+        return { ok: false, error: "Local data is corrupted and can't be uploaded." };
+      }
+      try {
+        // Replace mode: the browser snapshot becomes the whole truth (this is
+        // a deliberate migration, not an incremental save).
+        const env = await httpAdapter.save(normalizeDB(parsed), { baseRev: null, mode: "replace" });
+        if (!env) return { ok: false, error: "Server refused the upload." };
+        set({ db: env.db, dbRev: env.rev });
+        mutate((d) => logActivity(d, { type: "system", action: "Uploaded browser data to server", detail: "One-time migration" }));
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : "Upload failed." };
+      }
+    },
+
     logout: () => {
       const emp = get().currentUser();
-      if (emp) {
+      if (emp && get().mode === "local") {
         mutate((d) =>
           logActivity(d, { type: "logout", action: "Signed out", detail: `${emp.role} signed out`, employeeId: emp.id })
         );
       }
       cachedSession = null;
       saveSession(null);
-      set({ sessionEmployeeId: null, cart: [], cartCustomerId: null });
+      setAuthToken(null);
+      stopPolling();
+      set({ sessionEmployeeId: null, cart: [], cartCustomerId: null, serverAuthed: false, dbRev: 0 });
+      if (get().mode === "server") {
+        void initServerMode(set, get); // back to the public boot/login screen
+      }
     },
 
     // ── Products ──────────────────────────────────────────────────────────
@@ -1444,8 +1457,17 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
       if (!label) return { ok: false, error: "Give the QR code a name, e.g. “Table 12”." };
       let result: QrCode | undefined;
       mutate((d) => {
+        // Permanent identity: the id is derived from the location name (not a
+        // random token), so a printed wall poster keeps working forever —
+        // across reloads, restarts, demo resets and redeploys.
+        let id = input.id ?? qrSlug(label);
+        if (isNew && d.qrCodes.some((q) => q.id === id)) {
+          let n = 2;
+          while (d.qrCodes.some((q) => q.id === `${qrSlug(label)}-${n}`)) n += 1;
+          id = `${qrSlug(label)}-${n}`;
+        }
         const code: QrCode = {
-          id: isNew ? uid("qr") : input.id!,
+          id,
           label,
           active: input.active ?? true,
           createdAt: isNew ? new Date().toISOString() : d.qrCodes.find((q) => q.id === input.id)?.createdAt ?? new Date().toISOString(),
@@ -1472,109 +1494,15 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
       });
     },
 
-    rotateQrCode: (id) => {
-      const perms = get().permissions();
-      if (!perms.manageQr) return;
-      mutate((d) => {
-        const code = d.qrCodes.find((q) => q.id === id);
-        if (!code) return;
-        code.id = uid("qr"); // old printed codes stop working
-        code.scans = 0;
-        logActivity(d, { type: "system", action: "Regenerated QR order code", detail: `${code.label} — old codes no longer work` });
-      });
-    },
-
     placeQrOrder: (input) => {
-      const dbNow = get().db;
-      if (!dbNow.settings.qr.enabled) return { ok: false, error: "QR ordering is currently off." };
-      const qrCode = input.qrCodeId ? dbNow.qrCodes.find((q) => q.id === input.qrCodeId) : null;
-      if (input.qrCodeId && !qrCode) return { ok: false, error: "This ordering code is no longer valid." };
-      if (qrCode && !qrCode.active) return { ok: false, error: "This ordering code has been paused." };
-      if (input.items.length === 0) return { ok: false, error: "Your cart is empty." };
-
-      // Validate availability before touching anything.
-      for (const line of input.items) {
-        const product = dbNow.products.find((p) => p.id === line.productId);
-        if (!product || product.status === "archived")
-          return { ok: false, error: `Sorry — one of the items is no longer available.` };
-        if (!(line.qty > 0)) return { ok: false, error: "Item quantities must be at least 1." };
-        if (product.stock < line.qty)
-          return { ok: false, error: `Sorry — only ${Math.max(0, product.stock)} × ${product.name} left right now.` };
-      }
-
-      const calc = calculateCart(dbNow, input.items.map((l) => ({ productId: l.productId, qty: l.qty })), { customerId: null });
-      if (calc.error) return { ok: false, error: calc.error };
-      if (calc.calcLines.length !== input.items.length) return { ok: false, error: "Some items became unavailable. Please review your cart." };
-
-      let created: QrOrder | undefined;
+      // The heavy lifting lives in lib/qrOrderCore.ts so the order server can
+      // run the exact same validation, pricing, stock reservation and
+      // notifications for phone orders.
+      let result: ReturnType<typeof applyPlaceQrOrder> | null = null;
       mutate((d) => {
-        const items: TransactionItem[] = calc.calcLines.map((cl) => ({
-          productId: cl.productId,
-          name: cl.product.name,
-          sku: cl.product.sku,
-          price: cl.unitPrice,
-          cost: cl.product.cost,
-          qty: cl.qty,
-          lineDiscount: cl.lineDiscount,
-        }));
-        const order: QrOrder = {
-          id: uid("qro"),
-          number: `ORD-${d.settings.nextQrNumber}`,
-          qrCodeId: qrCode?.id ?? null,
-          locationLabel: qrCode?.label ?? undefined,
-          sessionId: input.sessionId,
-          customerName: input.customerName?.trim() || undefined,
-          customerPhone: input.customerPhone?.trim() || undefined,
-          note: input.note?.trim() || undefined,
-          items,
-          subtotal: calc.subtotal,
-          discount: Math.round((calc.lineDiscounts + calc.orderDiscount + calc.loyaltyDiscount + calc.pointsValue) * 100) / 100,
-          promoNames: Array.from(new Set(calc.calcLines.flatMap((l) => l.matchedPromos))).filter(Boolean),
-          tax: calc.tax,
-          total: calc.total,
-          status: "new",
-          createdAt: new Date().toISOString(),
-        };
-        d.settings.nextQrNumber += 1;
-
-        // Reserve stock immediately so other customers can't oversell it.
-        for (const it of items) {
-          const p = d.products.find((x) => x.id === it.productId);
-          if (!p) continue;
-          p.stock -= it.qty;
-          recordMovement(d, {
-            date: order.createdAt,
-            productId: p.id,
-            productName: p.name,
-            change: -it.qty,
-            reason: "qr-order",
-            reference: order.number,
-            resultingStock: p.stock,
-          });
-        }
-
-        d.qrOrders.unshift(order);
-
-        d.notifications.unshift({
-          id: uid("ntf"),
-          type: "qr-order",
-          title: "New QR order",
-          message: `${order.number}${order.locationLabel ? ` · ${order.locationLabel}` : ""} · ${items.reduce((s, i) => s + i.qty, 0)} items`,
-          date: order.createdAt,
-          read: false,
-          link: "/orders",
-        });
-        logActivity(d, {
-          employeeId: null,
-          type: "system",
-          action: "QR order placed",
-          detail: `${order.number}${order.locationLabel ? ` · ${order.locationLabel}` : ""}`,
-        });
-        created = order;
+        result = applyPlaceQrOrder(d, input);
       });
-
-      if (!created) return { ok: false, error: "Could not place the order. Please try again." };
-      return { ok: true, value: structuredClone(created) };
+      return result ?? { ok: false as const, error: "Could not place the order. Please try again." };
     },
 
     setQrOrderStatus: (id, status) => {
@@ -1592,6 +1520,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         };
         if (!allowed[status]?.includes(order.status)) return;
         order.status = status;
+        order.updatedAt = new Date().toISOString();
         order.handledBy = emp?.name ?? order.handledBy;
         if (status === "accepted") order.acceptedAt = new Date().toISOString();
         if (status === "ready") order.readyAt = new Date().toISOString();
@@ -1634,6 +1563,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         const o = d.qrOrders.find((x) => x.id === orderId);
         if (!o) return;
         o.status = "cancelled";
+        o.updatedAt = new Date().toISOString();
         restoreQrStock(d, o);
         d.notifications.unshift({
           id: uid("ntf"),
@@ -1688,6 +1618,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         d.transactions.unshift(txn);
         o.status = "completed";
         o.completedAt = now;
+        o.updatedAt = now;
         o.paymentMethod = paymentMethod;
         o.txnId = txn.id;
         o.handledBy = emp?.name ?? o.handledBy;
@@ -1801,6 +1732,19 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
     setCartCustomer: (customerId) => set({ cartCustomerId: customerId }),
   };
 });
+
+/** Stable, human-readable QR id from a location name — "Table 12" → "qr-table-12".
+ *  Printed wall posters encode this id, so it must never be random. */
+function qrSlug(label: string): string {
+  const slug = label
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `qr-${slug || "code"}`;
+}
 
 function generateSKU(products: Product[]): string {
   let num = 1000 + products.length + Math.floor(Math.random() * 900);

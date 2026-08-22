@@ -184,6 +184,8 @@ export interface QrOrder {
   total: number;
   status: QrOrderStatus;
   createdAt: string;
+  /** Last status transition — used by the server to merge concurrent edits. */
+  updatedAt?: string;
   acceptedAt?: string;
   readyAt?: string;
   completedAt?: string;
@@ -200,6 +202,7 @@ export interface QrOrderSettings {
   allowNotes: boolean;
   soundEnabled: boolean;
   instructions: string; // printed under the QR poster + shown on the customer page
+  publicBaseUrl?: string; // optional production address baked into printed QR codes (e.g. https://pos.mycafe.com)
 }
 
 export interface StockMovement {

@@ -487,11 +487,13 @@ export function buildDemoDB(): DB {
   settings.nextQrNumber = 1043;
 
   // ── QR self-ordering demo data ────────────────────────────────────────────
+  // FIXED ids: printed wall posters keep working across demo resets, restarts
+  // and reinstalls. Never make these random.
   const qrCodes: QrCode[] = [
-    { id: uid("qr"), label: "Table 1", active: true, createdAt: isoDaysAgo(30), scans: 14 },
-    { id: uid("qr"), label: "Table 2", active: true, createdAt: isoDaysAgo(30), scans: 9 },
-    { id: uid("qr"), label: "Counter", active: true, createdAt: isoDaysAgo(21), scans: 22 },
-    { id: uid("qr"), label: "Waiting Area", active: false, createdAt: isoDaysAgo(12), scans: 2 },
+    { id: "qr_table_1", label: "Table 1", active: true, createdAt: isoDaysAgo(30), scans: 14 },
+    { id: "qr_table_2", label: "Table 2", active: true, createdAt: isoDaysAgo(30), scans: 9 },
+    { id: "qr_counter", label: "Counter", active: true, createdAt: isoDaysAgo(21), scans: 22 },
+    { id: "qr_waiting_area", label: "Waiting Area", active: false, createdAt: isoDaysAgo(12), scans: 2 },
   ];
 
   const mkQrItem = (idx: number, qty: number): TransactionItem => ({

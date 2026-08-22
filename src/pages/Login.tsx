@@ -12,15 +12,18 @@ export default function Login(): React.ReactElement {
   const [selected, setSelected] = useState<string>(active[0]?.id ?? "");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   if (sessionEmployeeId) return <Navigate to="/" replace />;
   if (db.employees.length === 0 || (!db.settings.onboardingComplete && !db.settings.demoData)) {
     return <Navigate to="/welcome" replace />;
   }
 
-  const submit = () => {
+  const submit = async () => {
     setError("");
-    const res = login(selected, pin);
+    setBusy(true);
+    const res = await login(selected, pin);
+    setBusy(false);
     if (!res.ok) {
       setError(res.error);
       setPin("");
@@ -135,7 +138,7 @@ export default function Login(): React.ReactElement {
               <Button variant="secondary" size="lg" onClick={() => pressDigit("0")} className="!text-lg !font-bold">
                 0
               </Button>
-              <Button variant="primary" size="lg" onClick={submit} disabled={pin.length === 0}>
+              <Button variant="primary" size="lg" onClick={submit} disabled={pin.length === 0 || busy}>
                 Sign in
               </Button>
             </div>

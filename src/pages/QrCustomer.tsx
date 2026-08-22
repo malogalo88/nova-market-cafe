@@ -12,16 +12,67 @@ import {
   X,
 } from "lucide-react";
 import { useAppStore } from "../store/useStore";
-import type { Product, QrOrder } from "../lib/types";
+import type { QrOrder } from "../lib/types";
+import { calculateCart } from "../store/useStore";
 import { getQrSessionId } from "../lib/qrsession";
 import { fmtMoney, relativeTime } from "../lib/format";
-import { calculateCart } from "../store/useStore";
+import {
+  cancelPublicOrder,
+  fetchPublicConfig,
+  fetchSessionOrders,
+  postPublicOrder,
+  type PublicConfig,
+} from "../lib/storage";
 
 type Cart = Record<string, number>; // productId → qty
+
+/** Minimal product shape the menu renders — satisfied by both DB products and
+ *  the sanitized server config products. */
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description?: string;
+  image?: string;
+  stock: number;
+  lowStockThreshold: number;
+}
+
+/** What the customer-facing screens need from an order — identical whether it
+ *  came from the local database or the shared server. */
+interface OrderView {
+  id: string;
+  number: string;
+  status: QrOrder["status"];
+  createdAt: string;
+  total: number;
+  locationLabel?: string;
+  items: Array<{ qty: number }>;
+}
+
+function toView(o: QrOrder): OrderView {
+  return {
+    id: o.id,
+    number: o.number,
+    status: o.status,
+    createdAt: o.createdAt,
+    total: o.total,
+    locationLabel: o.locationLabel,
+    items: o.items.map((i) => ({ qty: i.qty })),
+  };
+}
+
+const MSG_QR_PAUSED = "QR ordering is currently paused. Please order at the counter.";
+const MSG_CODE_INVALID = "This ordering code isn't valid anymore.";
+const MSG_CODE_PAUSED = "This ordering code has been paused. Please order at the counter.";
 
 export default function QrCustomer(): React.ReactElement {
   const { qrId = "" } = useParams();
   const db = useAppStore((s) => s.db);
+  const mode = useAppStore((s) => s.mode);
+  const storeReady = useAppStore((s) => s.ready);
+  const isRemote = mode === "server";
 
   const [cart, setCart] = useState<Cart>({});
   const [search, setSearch] = useState("");
@@ -32,62 +83,145 @@ export default function QrCustomer(): React.ReactElement {
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [placing, setPlacing] = useState(false);
+
+  // Server-mode data (menu/settings snapshot + this session's live orders)
+  const [remoteCfg, setRemoteCfg] = useState<PublicConfig | null>(null);
+  const [remoteOrders, setRemoteOrders] = useState<OrderView[]>([]);
+  const [netError, setNetError] = useState("");
 
   const sessionId = useMemo(() => getQrSessionId(), []);
-  const qrSettings = db.settings.qr;
-  const symbol = db.settings.currencySymbol;
 
-  const code = db.qrCodes.find((q) => q.id === qrId);
-  const storeReady = useAppStore((s) => s.ready);
-  const blockedReason =
+  // ── Server mode: fetch the public menu and session orders on a loop so the
+  // phone stays in sync (pauses, stock levels, staff accepting orders…).
+  useEffect(() => {
+    if (!isRemote) return;
+    let alive = true;
+    const pullCfg = (): void => {
+      fetchPublicConfig(qrId || null)
+        .then((cfg) => {
+          if (!alive) return;
+          setRemoteCfg(cfg);
+          setNetError("");
+        })
+        .catch(() => {
+          if (alive) setNetError("Can't reach the store right now. Check your connection and try again.");
+        });
+    };
+    const pullOrders = (): void => {
+      fetchSessionOrders(sessionId).then((o) => {
+        if (alive) setRemoteOrders(o);
+      }).catch(() => {});
+    };
+    pullCfg();
+    pullOrders();
+    const t1 = setInterval(pullCfg, 6000);
+    const t2 = setInterval(pullOrders, 4000);
+    return () => {
+      alive = false;
+      clearInterval(t1);
+      clearInterval(t2);
+    };
+  }, [isRemote, qrId, sessionId]);
+
+  // ── Unified view data ──────────────────────────────────────────────────────
+  const qrSettings = remoteCfg?.qr ?? db.settings.qr;
+  const symbol = remoteCfg?.currencySymbol ?? db.settings.currencySymbol;
+  const businessName = remoteCfg?.businessName ?? db.settings.businessName;
+  const logo = remoteCfg?.logo ?? db.settings.logo;
+
+  const code = db.qrCodes.find((q) => q.id === qrId); // local mode only
+  const locationLabel = isRemote ? remoteCfg?.locationLabel ?? null : code?.label ?? null;
+
+  const blockedReason: string | null =
     !storeReady ? null
-    : !qrSettings.enabled ? "QR ordering is currently paused. Please order at the counter."
-    : !code ? "This ordering code isn't valid anymore."
-    : !code.active ? "This ordering code has been paused. Please order at the counter."
-    : null;
+    : netError ? netError
+    : isRemote
+      ? !remoteCfg ? null
+        : !remoteCfg.qr.enabled ? MSG_QR_PAUSED
+        : !remoteCfg.codeValid ? MSG_CODE_INVALID
+        : null
+      : !qrSettings.enabled ? MSG_QR_PAUSED
+      : !code ? MSG_CODE_INVALID
+      : !code.active ? MSG_CODE_PAUSED
+      : null;
+
+  const allItems: MenuItem[] = useMemo(
+    () =>
+      isRemote
+        ? remoteCfg?.products ?? []
+        : db.products
+            .filter((p) => p.status === "active")
+            .map((p) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              category: p.category,
+              description: p.description,
+              image: p.image,
+              stock: p.stock,
+              lowStockThreshold: p.lowStockThreshold,
+            })),
+    [isRemote, remoteCfg, db.products]
+  );
 
   // Live status of everything this session has ordered (newest first).
-  const myOrders = useMemo(
-    () => db.qrOrders.filter((o) => o.sessionId === sessionId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [db.qrOrders, sessionId]
+  const myOrders: OrderView[] = useMemo(
+    () =>
+      isRemote
+        ? [...remoteOrders].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        : db.qrOrders.filter((o) => o.sessionId === sessionId).map(toView)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [isRemote, remoteOrders, db.qrOrders, sessionId]
   );
   const placedOrder = placedOrderId ? myOrders.find((o) => o.id === placedOrderId) ?? null : null;
 
   const categories = useMemo(() => {
-    const set = new Set(db.products.filter((p) => p.status === "active").map((p) => p.category));
+    const set = new Set(allItems.map((p) => p.category));
     return ["All", ...Array.from(set).sort()];
-  }, [db.products]);
+  }, [allItems]);
 
   const products = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return db.products
-      .filter((p) => p.status === "active")
+    return allItems
       .filter((p) => category === "All" || p.category === category)
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q))
       .sort((a, b) => Number(b.stock > 0) - Number(a.stock > 0) || a.name.localeCompare(b.name));
-  }, [db.products, search, category]);
+  }, [allItems, search, category]);
 
   const cartLines = Object.entries(cart)
-    .map(([productId, qty]) => ({ product: db.products.find((p) => p.id === productId), qty }))
-    .filter((l): l is { product: Product; qty: number } => !!l.product && l.qty > 0);
+    .map(([productId, qty]) => ({ product: allItems.find((p) => p.id === productId), qty }))
+    .filter((l): l is { product: MenuItem; qty: number } => !!l.product && l.qty > 0);
 
-  const calc = useMemo(
-    () =>
-      cartLines.length
-        ? calculateCart(db, cartLines.map((l) => ({ productId: l.product.id, qty: l.qty })), { customerId: null })
-        : null,
-    [db, cartLines]
-  );
+  /** Totals shown in the cart. Server mode estimates locally (promotions are
+   *  applied authoritatively by the server when the order lands). */
+  const est = useMemo<{ subtotalNet: number; discounts: number; tax: number; total: number } | null>(() => {
+    if (!cartLines.length) return null;
+    if (!isRemote) {
+      const c = calculateCart(db, cartLines.map((l) => ({ productId: l.product.id, qty: l.qty })), { customerId: null });
+      if (!c) return null;
+      return {
+        subtotalNet: c.subtotal - c.lineDiscounts,
+        discounts: c.orderDiscount + c.loyaltyDiscount + c.pointsValue,
+        tax: c.tax,
+        total: c.total,
+      };
+    }
+    const gross = cartLines.reduce((s, l) => s + l.product.price * l.qty, 0);
+    const tax = remoteCfg?.taxEnabled ? Math.round(gross * remoteCfg.taxRate) / 100 : 0;
+    return { subtotalNet: gross, discounts: 0, tax, total: gross + tax };
+  }, [isRemote, db, cartLines, remoteCfg]);
+
+  const taxRate = remoteCfg?.taxRate ?? db.settings.taxRate;
 
   const cartCount = cartLines.reduce((s, l) => s + l.qty, 0);
-  const extraDiscount = calc ? calc.orderDiscount + calc.loyaltyDiscount + calc.pointsValue : 0;
   const activeCount = myOrders.filter((o) => ["new", "accepted", "preparing", "ready"].includes(o.status)).length;
 
   useEffect(() => {
-    document.title = `Order — ${db.settings.businessName}`;
-  }, [db.settings.businessName]);
+    document.title = `Order — ${businessName}`;
+  }, [businessName]);
 
-  function add(p: Product): void {
+  function add(p: MenuItem): void {
     if (p.stock <= (cart[p.id] ?? 0)) return;
     setError("");
     setCart((c) => ({ ...c, [p.id]: (c[p.id] ?? 0) + 1 }));
@@ -102,40 +236,75 @@ export default function QrCustomer(): React.ReactElement {
     });
   }
 
-  function placeOrder(): void {
-    if (!calc || cartCount === 0) return;
-    const res = useAppStore.getState().placeQrOrder({
-      qrCodeId: qrId,
-      sessionId,
-      items: cartLines.map((l) => ({ productId: l.product.id, qty: l.qty })),
-      customerName: qrSettings.allowName ? name : undefined,
-      customerPhone: qrSettings.allowPhone ? phone : undefined,
-      note: qrSettings.allowNotes ? note : undefined,
-    });
-    if (!res.ok) {
-      setError(res.error);
-      return;
+  async function placeOrder(): Promise<void> {
+    if (!est || cartCount === 0 || placing) return;
+    setPlacing(true);
+    setError("");
+    try {
+      let view: OrderView;
+      if (isRemote) {
+        const res = await postPublicOrder({
+          qrCodeId: qrId || null,
+          sessionId,
+          items: cartLines.map((l) => ({ productId: l.product.id, qty: l.qty })),
+          customerName: qrSettings.allowName ? name.trim() || undefined : undefined,
+          customerPhone: qrSettings.allowPhone ? phone.trim() || undefined : undefined,
+          note: qrSettings.allowNotes ? note.trim() || undefined : undefined,
+        });
+        view = { ...res, items: res.items.map((i) => ({ qty: i.qty })) };
+        setRemoteOrders((prev) => [view, ...prev.filter((o) => o.id !== view.id)]);
+      } else {
+        const res2 = useAppStore.getState().placeQrOrder({
+          qrCodeId: qrId || null,
+          sessionId,
+          items: cartLines.map((l) => ({ productId: l.product.id, qty: l.qty })),
+          customerName: qrSettings.allowName ? name : undefined,
+          customerPhone: qrSettings.allowPhone ? phone : undefined,
+          note: qrSettings.allowNotes ? note : undefined,
+        });
+        if (!res2.ok) {
+          setError(res2.error);
+          return;
+        }
+        view = toView(res2.value!);
+      }
+      setPlacedOrderId(view.id);
+      setCart({});
+      setSheetOpen(false);
+      setName("");
+      setPhone("");
+      setNote("");
+      window.scrollTo(0, 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not place the order.");
+    } finally {
+      setPlacing(false);
     }
-    setPlacedOrderId(res.value!.id);
-    setCart({});
-    setSheetOpen(false);
-    setName("");
-    setPhone("");
-    setNote("");
   }
 
-  function cancelOrder(o: QrOrder): void {
-    const res = useAppStore.getState().cancelQrOrderByCustomer(o.id, sessionId);
-    if (!res.ok) setError(res.error);
+  function cancelOrder(o: OrderView): void {
+    if (isRemote) {
+      cancelPublicOrder(o.id, sessionId)
+        .then(() =>
+          fetchSessionOrders(sessionId).then((list) =>
+            setRemoteOrders(list.map((v) => ({ ...v, items: v.items.map((i) => ({ qty: i.qty })) })))
+          )
+        )
+        .catch((err) => setError(err instanceof Error ? err.message : "Could not cancel."));
+    } else {
+      const res = useAppStore.getState().cancelQrOrderByCustomer(o.id, sessionId);
+      if (!res.ok) setError(res.error);
+    }
   }
 
-  // ── Blocked screens ───────────────────────────────────────────────────────
-  if (!storeReady) return <Center><Spinner /></Center>;
+  // ── Loading / blocked screens ─────────────────────────────────────────────
+  const waiting = !storeReady || (isRemote && !remoteCfg && !netError);
+  if (waiting) return <Center><Spinner /></Center>;
   if (blockedReason)
     return (
       <Center>
         <div style={{ fontSize: 44 }}>🛎️</div>
-        <h1 className="mt-3 text-lg font-extrabold">{db.settings.businessName}</h1>
+        <h1 className="mt-3 text-lg font-extrabold">{businessName}</h1>
         <p className="mt-2 max-w-xs text-center text-[15px] text-muted">{blockedReason}</p>
       </Center>
     );
@@ -198,15 +367,15 @@ export default function QrCustomer(): React.ReactElement {
       {/* Header */}
       <header className="sticky top-0 z-20 -mx-4 mb-3 px-4 pb-3 pt-4" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-3">
-          {db.settings.logo ? (
-            <img src={db.settings.logo} alt="" className="h-10 w-10 rounded-xl object-cover" />
+          {logo ? (
+            <img src={logo} alt="" className="h-10 w-10 rounded-xl object-cover" />
           ) : (
             <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
               <Store size={20} />
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[17px] font-extrabold leading-tight">{db.settings.businessName}</h1>
+            <h1 className="truncate text-[17px] font-extrabold leading-tight">{businessName}</h1>
             <p className="text-xs text-muted">{qrSettings.serviceMode === "table" ? "Order from your table" : "Order for pickup"}</p>
           </div>
           {activeCount > 0 && (
@@ -218,9 +387,9 @@ export default function QrCustomer(): React.ReactElement {
             </button>
           )}
         </div>
-        {code && (
+        {locationLabel && (
           <p className="mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>
-            📍 {code.label}
+            📍 {locationLabel}
           </p>
         )}
       </header>
@@ -316,7 +485,7 @@ export default function QrCustomer(): React.ReactElement {
             <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white/25 text-[12px] font-black">{cartCount}</span>
             View cart
           </span>
-          <span className="text-[15px] font-black">{fmtMoney(calc?.total ?? 0, symbol)}</span>
+          <span className="text-[15px] font-black">{fmtMoney(est?.total ?? 0, symbol)}</span>
         </button>
       )}
 
@@ -333,14 +502,13 @@ export default function QrCustomer(): React.ReactElement {
               <button className="rounded-full p-2" style={{ background: "var(--surface-2)" }} onClick={() => setSheetOpen(false)} aria-label="Close cart"><X size={17} /></button>
             </div>
 
-            {cartLines.length === 0 ? (
+            {cartLines.length === 0 || !est ? (
               <p className="py-10 text-center text-muted">Your cart is empty.</p>
             ) : (
               <>
                 <div className="space-y-2.5">
                   {cartLines.map(({ product, qty }) => {
                     const lineTotal = product.price * qty;
-                    const discounted = calc?.calcLines.find((cl) => cl.productId === product.id)?.lineDiscount ?? 0;
                     return (
                       <div key={product.id} className="flex items-center gap-3 rounded-2xl p-2.5" style={{ background: "var(--surface)" }}>
                         {product.image ? (
@@ -350,7 +518,7 @@ export default function QrCustomer(): React.ReactElement {
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13.5px] font-bold">{product.name}</p>
-                          <p className="text-xs text-muted">{fmtMoney(product.price, symbol)} each{discounted > 0 ? " · deal applied" : ""}</p>
+                          <p className="text-xs text-muted">{fmtMoney(product.price, symbol)} each</p>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <button className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "var(--surface-3)" }} onClick={() => sub(product.id)} aria-label={`Less ${product.name}`}><Minus size={13} /></button>
@@ -358,7 +526,7 @@ export default function QrCustomer(): React.ReactElement {
                           <button className="flex h-7 w-7 items-center justify-center rounded-lg disabled:opacity-40" style={{ background: "var(--surface-3)" }} onClick={() => add(product)} disabled={qty >= product.stock} aria-label={`More ${product.name}`}><Plus size={13} /></button>
                           <button className="ml-1 text-muted" onClick={() => setCart((c) => { const n = { ...c }; delete n[product.id]; return n; })} aria-label={`Remove ${product.name}`}><Trash2 size={15} /></button>
                         </div>
-                        <p className="w-14 shrink-0 text-right text-[13.5px] font-black">{fmtMoney(lineTotal - discounted, symbol)}</p>
+                        <p className="w-14 shrink-0 text-right text-[13.5px] font-black">{fmtMoney(lineTotal, symbol)}</p>
                       </div>
                     );
                   })}
@@ -366,20 +534,21 @@ export default function QrCustomer(): React.ReactElement {
 
                 {/* Totals */}
                 <div className="mt-4 space-y-1 rounded-2xl p-3.5 text-[13.5px]" style={{ background: "var(--surface)" }}>
-                  <Row label="Subtotal" value={fmtMoney(calc!.subtotal - calc!.lineDiscounts, symbol)} />
-                  {extraDiscount > 0 && <Row label="Discounts" value={`−${fmtMoney(extraDiscount, symbol)}`} good />}
-                  {calc!.tax > 0 && <Row label={`Tax (${db.settings.taxRate}%)`} value={fmtMoney(calc!.tax, symbol)} />}
+                  <Row label="Subtotal" value={fmtMoney(est.subtotalNet, symbol)} />
+                  {est.discounts > 0 && <Row label="Discounts" value={`−${fmtMoney(est.discounts, symbol)}`} good />}
+                  {est.tax > 0 && <Row label={`Tax (${taxRate}%)`} value={fmtMoney(est.tax, symbol)} />}
                   <div className="!mt-2 flex justify-between border-t pt-2 text-base font-black" style={{ borderColor: "var(--border)" }}>
-                    <span>Total</span><span>{fmtMoney(calc!.total, symbol)}</span>
+                    <span>Total</span><span>{fmtMoney(est.total, symbol)}</span>
                   </div>
+                  {isRemote && <p className="pt-1 text-[11.5px] text-muted">Final totals are confirmed by the store when your order is accepted.</p>}
                 </div>
 
                 {/* Optional info */}
                 {(qrSettings.allowName || qrSettings.allowPhone || qrSettings.allowNotes) && (
                   <div className="mt-4 space-y-2.5">
-                    {code && (
+                    {locationLabel && (
                       <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>
-                        📍 Your order is for <b className="text-ink">{code.label}</b>
+                        📍 Your order is for <b className="text-ink">{locationLabel}</b>
                       </div>
                     )}
                     {qrSettings.allowName && (
@@ -396,8 +565,8 @@ export default function QrCustomer(): React.ReactElement {
 
                 {error && <p className="mt-3 rounded-xl px-3 py-2 text-[13px] font-semibold text-white" style={{ background: "var(--danger)" }}>{error}</p>}
 
-                <button className="btn btn-primary mt-4 w-full !py-4 text-[17px]" onClick={placeOrder}>
-                  PLACE ORDER · {fmtMoney(calc!.total, symbol)}
+                <button className="btn btn-primary mt-4 w-full !py-4 text-[17px]" onClick={() => void placeOrder()} disabled={placing}>
+                  {placing ? "Sending…" : `PLACE ORDER · ${fmtMoney(est.total, symbol)}`}
                 </button>
                 <button className="btn btn-secondary mt-2 w-full" onClick={() => setSheetOpen(false)}>
                   <ChevronLeft size={16} /> Continue shopping
@@ -426,7 +595,7 @@ function Shell({ children }: { children: React.ReactNode }): React.ReactElement 
 
 function Center({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <div className="flex min-h-dvh max-w-md flex-col items-center justify-center px-6 mx-auto">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6">
       {children}
     </div>
   );
@@ -456,7 +625,7 @@ const ORDER_INDEX: Record<QrOrder["status"], number> = {
   new: 0, accepted: 1, preparing: 2, ready: 3, completed: 4, rejected: -1, cancelled: -1,
 };
 
-function StatusTracker({ order, serviceMode }: { order: QrOrder; serviceMode: "counter" | "table" }): React.ReactElement {
+function StatusTracker({ order, serviceMode }: { order: OrderView; serviceMode: "counter" | "table" }): React.ReactElement {
   if (order.status === "rejected")
     return (
       <div className="mt-4 rounded-2xl p-4 text-center" style={{ background: "var(--danger-soft)" }}>
@@ -523,9 +692,9 @@ function SessionOrderCard({
   symbol,
   onCancel,
 }: {
-  order: QrOrder;
+  order: OrderView;
   symbol: string;
-  onCancel: (o: QrOrder) => void;
+  onCancel: (o: OrderView) => void;
 }): React.ReactElement {
   return (
     <div className="flex items-center gap-3 rounded-2xl p-3" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>

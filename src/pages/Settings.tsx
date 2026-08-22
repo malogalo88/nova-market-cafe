@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   Building2,
+  CheckCircle2,
   Database,
   Download,
   Heart,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   Sun,
   Upload,
+  Wifi,
 } from "lucide-react";
 import { useAppStore } from "../store/useStore";
 import { PAYMENT_LABELS, type DB, type PaymentMethod } from "../lib/types";
@@ -360,6 +362,18 @@ export default function Settings(): React.ReactElement {
                   placeholder="Point your camera at this code to order"
                 />
               </Field>
+              <Field
+                label="Website address (for printed QR codes)"
+                hint="Optional. Set it once your site is live, e.g. https://pos.mycafe.com — posters then keep working no matter where you print them."
+              >
+                <Input
+                  value={s.qr.publicBaseUrl ?? ""}
+                  onChange={(e) => set("qr", { ...s.qr, publicBaseUrl: e.target.value.trim() || undefined })}
+                  placeholder="https://pos.mycafe.com"
+                  inputMode="url"
+                  autoComplete="off"
+                />
+              </Field>
               <p className="text-xs text-muted">
                 Create and print the actual codes in <b>QR Ordering</b> (sidebar). Orders arrive under{" "}
                 <b>Customer Orders</b>.
@@ -399,6 +413,42 @@ export default function Settings(): React.ReactElement {
       {/* DATA */}
       {tab === "data" && (
         <div className="max-w-xl space-y-3">
+          {store.mode === "server" && (
+            <Card className="space-y-3 p-5">
+              <SectionTitleSmall title={<span className="inline-flex items-center gap-2"><Wifi size={15} /> Shared server</span>} />
+              <p className="text-[13px] text-muted">
+                This device is connected to the NovaPOS server — QR orders from customers' phones arrive here live,
+                and every signed-in device shares the same data.
+              </p>
+              <p className="flex items-center gap-2 rounded-lg p-2.5 text-xs font-semibold" style={{ background: "var(--success-soft)", color: "var(--success)" }}>
+                <CheckCircle2 size={14} /> Connected{store.serverAuthed ? " · signed in" : ""}
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  confirm({
+                    title: "Upload this browser's data to the server?",
+                    message:
+                      "The server's current data will be replaced by what's stored in this browser — products, sales, customers, QR codes and settings. Phones will immediately start seeing this data.",
+                    danger: true,
+                    confirmLabel: "Upload to server",
+                    onConfirm: async () => {
+                      const res = await store.uploadLocalDbToServer();
+                      if (res.ok) toast.success("Uploaded — phones now share this data");
+                      else toast.error(res.error);
+                    },
+                  })
+                }
+              >
+                <Upload size={15} /> Upload this browser's data to the server
+              </Button>
+              <p className="text-xs text-muted">
+                One-time migration: run this on the computer where you've been using NovaPOS so your existing menu,
+                sales history and printed QR codes keep working across all devices.
+              </p>
+            </Card>
+          )}
+
           <Card className="space-y-3 p-5">
             <SectionTitleSmall title={<span className="inline-flex items-center gap-2"><Database size={15} /> Backup & restore</span>} />
             <p className="text-[13px] text-muted">

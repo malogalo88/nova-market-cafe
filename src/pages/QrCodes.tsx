@@ -6,12 +6,11 @@ import {
   Plus,
   Printer,
   QrCode as QrCodeIcon,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useAppStore } from "../store/useStore";
 import type { QrCode } from "../lib/types";
-import { downloadQrPng, printQrPoster, qrDataUrl, qrUrl } from "../lib/qr";
+import { downloadQrPng, printQrPoster, qrBase, qrDataUrl, qrUrl } from "../lib/qr";
 import {
   Badge,
   Button,
@@ -31,6 +30,9 @@ export default function QrCodes(): React.ReactElement {
   const db = useAppStore((s) => s.db);
   const store = useAppStore.getState();
   const confirm = useConfirm();
+  const onDevHost =
+    !db.settings.qr.publicBaseUrl &&
+    /^(localhost|127\.0\.0\.1|\[::1\]|.*\.local)$/i.test(window.location.hostname);
 
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<{ id?: string; label: string; active: boolean }>({ label: "", active: true });
@@ -40,7 +42,7 @@ export default function QrCodes(): React.ReactElement {
   async function openPreview(code: QrCode): Promise<void> {
     setBusyId(code.id);
     try {
-      setPreview({ code, img: await qrDataUrl(code) });
+      setPreview({ code, img: await qrDataUrl(code, 512, db) });
     } finally {
       setBusyId(null);
     }
@@ -103,7 +105,7 @@ export default function QrCodes(): React.ReactElement {
                 onClick={() => void openPreview(c)}
                 aria-label={`Preview QR poster for ${c.label}`}
               >
-                <MiniQr code={c} />
+                <MiniQr code={c} db={db} />
                 <span className="mt-2 block text-[11px] font-bold text-gray-500 group-hover:text-indigo-600">Tap to preview & print</span>
               </button>
 
@@ -116,7 +118,7 @@ export default function QrCodes(): React.ReactElement {
                   variant="secondary"
                   disabled={busyId === c.id}
                   onClick={async () => {
-                    downloadQrPng(c, await qrDataUrl(c));
+                    downloadQrPng(c, await qrDataUrl(c, 512, db));
                     toast.success("PNG downloaded");
                   }}
                 >
@@ -126,7 +128,7 @@ export default function QrCodes(): React.ReactElement {
                   size="sm"
                   variant="secondary"
                   onClick={() => {
-                    void navigator.clipboard?.writeText(qrUrl(c)).then(
+                    void navigator.clipboard?.writeText(qrUrl(c, db)).then(
                       () => toast.success("Link copied"),
                       () => toast.error("Couldn't copy the link")
                     );
@@ -141,23 +143,6 @@ export default function QrCodes(): React.ReactElement {
                   Rename
                 </Button>
                 <div className="flex items-center gap-1">
-                  <IconButton
-                    label="Regenerate (old prints stop working)"
-                    onClick={() =>
-                      confirm({
-                        title: `Regenerate “${c.label}”?`,
-                        message: "The link inside old printed posters will stop working. Reprint after regenerating.",
-                        danger: true,
-                        confirmLabel: "Regenerate",
-                        onConfirm: () => {
-                          store.rotateQrCode(c.id);
-                          toast.success("New code generated — reprint the poster");
-                        },
-                      })
-                    }
-                  >
-                    <RefreshCw size={14} />
-                  </IconButton>
                   <IconButton
                     label="Delete QR code"
                     onClick={() =>
@@ -186,14 +171,20 @@ export default function QrCodes(): React.ReactElement {
       <Card className="mt-4 p-4">
         <h3 className="mb-1.5 flex items-center gap-2 text-[13px] font-bold tracking-wide uppercase text-muted"><Link2 size={14} /> How it works</h3>
         <ol className="list-decimal space-y-1 pl-5 text-[13px] text-muted">
-          <li>Create a code per table / spot and print its poster.</li>
+          <li>Create a code per table / spot and print its poster — the code is <b className="text-ink">permanent</b> and never expires.</li>
           <li>Customers scan with their phone camera — a simple ordering page opens (no app, no login).</li>
           <li>Their order lands in <b className="text-ink">Customer Orders</b> tagged with this location.</li>
           <li>Accept → prepare → mark ready → take payment at the counter. Inventory and reports stay in sync automatically.</li>
         </ol>
-        <p className="mt-2 rounded-lg p-2.5 text-xs" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>
-          The QR encodes this device's address + an unguessable token (<code>#/order/…</code>) — no admin pages, prices or settings are exposed. Phones reach live data when the POS is served over your network; until you connect a backend through the storage adapter, other devices see a friendly offline notice.
-        </p>
+        {onDevHost ? (
+          <p className="mt-2 rounded-lg p-2.5 text-xs font-semibold" style={{ background: "var(--warn-soft)", color: "var(--ink)" }}>
+            ⚠ You're viewing this on a development address ({qrBase(db)}). Codes you print now will only open on this machine. Once your site is live, set its address under <b>Settings → QR Ordering → Website address</b>, then reprint your posters.
+          </p>
+        ) : (
+          <p className="mt-2 rounded-lg p-2.5 text-xs" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>
+            Each code encodes a permanent link (<code>#/order/&lt;location-id&gt;</code>) on your website — no admin pages, prices or settings are exposed, and codes keep working after restarts and redeploys. Customers only ever see the ordering screen.
+          </p>
+        )}
       </Card>
 
       {/* Create / rename */}
@@ -228,7 +219,7 @@ export default function QrCodes(): React.ReactElement {
         footer={
           preview && (
             <>
-              <Button variant="secondary" onClick={async () => { downloadQrPng(preview.code, await qrDataUrl(preview.code)); toast.success("PNG downloaded"); }}>
+              <Button variant="secondary" onClick={async () => { downloadQrPng(preview.code, await qrDataUrl(preview.code, 512, db)); toast.success("PNG downloaded"); }}>
                 <Download size={15} /> PNG only
               </Button>
               <Button variant="primary" onClick={() => printQrPoster(db, preview.code, preview.img)}>
@@ -259,15 +250,15 @@ function nextLabel(existing: QrCode[]): string {
   return `Table ${n}`;
 }
 
-function MiniQr({ code }: { code: QrCode }): React.ReactElement {
+function MiniQr({ code, db }: { code: QrCode; db: ReturnType<typeof useAppStore.getState>["db"] }): React.ReactElement {
   const [img, setImg] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    void qrDataUrl(code, 220).then((d) => alive && setImg(d));
+    void qrDataUrl(code, 220, db).then((d) => alive && setImg(d));
     return () => {
       alive = false;
     };
-  }, [code]);
+  }, [code, db]);
   return img ? (
     <img src={img} alt="" className="mx-auto block h-28 w-28" />
   ) : (
