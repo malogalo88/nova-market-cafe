@@ -18,7 +18,7 @@ import type { DB, QrOrder } from "../src/lib/types.js";
 import { normalizeDB } from "../src/lib/storage.js";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore.js";
 import type { DbStore } from "./store.js";
-import { databaseUrl, describeStorage } from "./store.js";
+import { chooseStore, databaseUrl, describeStorage } from "./store.js";
 
 /**
  * QR codes printed on posters are permanent physical objects -- their ids must
@@ -270,6 +270,30 @@ export function mergeDbs(current: DB, incoming: DB, mode: "merge" | "replace"): 
   return merged;
 }
 
+// -- Entry points ---------------------------------------------------------------
+/**
+ * Shared serverless entry used by api/[...path].ts AND the plain-named
+ * wrapper files (api/public/config.ts etc.). The wrappers exist because some
+ * deployment pipelines mangle bracket filenames like "[...path].ts", which
+ * silently breaks every multi-segment API route; literal file names always
+ * deploy correctly.
+ */
+export async function serveApi(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const host = req.headers.host ?? "localhost";
+    const url = new URL(req.url ?? "/api", `http://${host}`);
+    await handleApiRequest(req, res, url, chooseStore());
+  } catch (err) {
+    console.error("[api]", (err as Error).message);
+    if (!res.headersSent) {
+      json(res, (err as Error).message === "Invalid JSON" || (err as Error).message === "Payload too large" ? 400 : 500, {
+        ok: false,
+        error: (err as Error).message,
+      });
+    }
+  }
+}
+
 // -- Router -------------------------------------------------------------------
 export async function handleApiRequest(
   req: IncomingMessage,
@@ -458,8 +482,14 @@ export async function handleApiRequest(
       }
 
       // Customer cancelling their own still-new order (session must match).
-      if (req.method === "DELETE" && url.pathname.startsWith("/api/public/orders/")) {
-        const orderId = decodeURIComponent(url.pathname.slice("/api/public/orders/".length));
+      // Accepts BOTH /api/public/orders/:id and /api/public/orders?id=:id --
+      // the query-param form exists so deployments without a working
+      // catch-all route (bracket filenames) can still cancel via the plain
+      // api/public/orders.ts wrapper file.
+      if (req.method === "DELETE" && (url.pathname === "/api/public/orders" || url.pathname.startsWith("/api/public/orders/"))) {
+        const orderId = url.pathname.startsWith("/api/public/orders/")
+          ? decodeURIComponent(url.pathname.slice("/api/public/orders/".length))
+          : url.searchParams.get("id") ?? "";
         const sessionId = url.searchParams.get("session") ?? "";
 
         type CancelReply = { status: number; body: unknown };

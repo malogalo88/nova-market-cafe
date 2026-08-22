@@ -334,8 +334,10 @@ export async function fetchSessionOrders(sessionId: string): Promise<PublicOrder
 }
 
 export async function cancelPublicOrder(orderId: string, sessionId: string): Promise<void> {
+  // Query-param form (not /orders/:id) so cancelling works even on
+  // deployments where the bracketed catch-all route file is unavailable.
   const r = await api(
-    `/api/public/orders/${encodeURIComponent(orderId)}?session=${encodeURIComponent(sessionId)}`,
+    `/api/public/orders?id=${encodeURIComponent(orderId)}&session=${encodeURIComponent(sessionId)}`,
     { method: "DELETE" }
   );
   const body = (await r.json()) as { ok: boolean; error?: string };
