@@ -14,11 +14,11 @@
  */
 import crypto from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { DB, QrOrder } from "../src/lib/types";
-import { normalizeDB } from "../src/lib/storage";
-import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore";
-import type { DbStore } from "./store";
-import { databaseUrl, describeStorage } from "./store";
+import type { DB, QrOrder } from "../src/lib/types.js";
+import { normalizeDB } from "../src/lib/storage.js";
+import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore.js";
+import type { DbStore } from "./store.js";
+import { databaseUrl, describeStorage } from "./store.js";
 
 /**
  * QR codes printed on posters are permanent physical objects -- their ids must

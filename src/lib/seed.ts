@@ -15,8 +15,8 @@ import type {
   PaymentMethod,
   QrCode,
   QrOrder,
-} from "./types";
-import { dayKey, uid } from "./format";
+} from "./types.js";
+import { dayKey, uid } from "./format.js";
 
 // Deterministic RNG so the demo dataset looks the same every install.
 function mulberry32(a: number) {

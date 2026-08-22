@@ -1,5 +1,5 @@
-import type { ActivityEntry, AppNotification, CartLine, DB, QrOrder, TransactionItem } from "./types";
-import { computeCart } from "./pricing";
+import type { ActivityEntry, AppNotification, CartLine, DB, QrOrder, TransactionItem } from "./types.js";
+import { computeCart } from "./pricing.js";
 
 /** Pure QR-order placement shared by the client store and the order server,
  *  so a phone order and an in-store one follow identical validation, pricing,

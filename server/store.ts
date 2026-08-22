@@ -21,9 +21,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import pg from "pg";
-import type { DB } from "../src/lib/types";
-import { buildDemoDB } from "../src/lib/seed";
-import { normalizeDB } from "../src/lib/storage";
+import type { DB } from "../src/lib/types.js";
+import { buildDemoDB } from "../src/lib/seed.js";
+import { normalizeDB } from "../src/lib/storage.js";
 
 export interface DbSnapshot {
   db: DB;

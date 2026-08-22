@@ -11,8 +11,8 @@
  * turn every endpoint into an opaque 500.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handleApiRequest, json } from "../server/core";
-import { chooseStore } from "../server/store";
+import { handleApiRequest, json } from "../server/core.js";
+import { chooseStore } from "../server/store.js";
 
 export const config = {
   api: {

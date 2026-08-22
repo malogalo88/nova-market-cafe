@@ -1,5 +1,5 @@
-import type { DB, Employee, QrOrderStatus } from "./types";
-import { buildDemoDB, buildEmptyDB } from "./seed";
+import type { DB, Employee, QrOrderStatus } from "./types.js";
+import { buildDemoDB, buildEmptyDB } from "./seed.js";
 
 const STORAGE_KEY = "novapos.db.v1";
 export { STORAGE_KEY };

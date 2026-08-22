@@ -1,4 +1,4 @@
-import type { CartLine, DB, Promotion } from "./types";
+import type { CartLine, DB, Promotion } from "./types.js";
 
 /** Pure cart/pricing engine shared by the POS client and the order server,
  *  so a phone order is priced exactly like an in-store one. */

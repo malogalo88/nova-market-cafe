@@ -63,6 +63,24 @@ npm start          # build + serve dist/ and /api on http://0.0.0.0:8787
 
 Handy at the counter; not required for phone ordering.
 
+## Troubleshooting
+
+**Build fails on Vercel with TypeScript import errors (TS2835)?**
+Deploy the project exactly as checked in. Server-side files use explicit
+`.js` import extensions (required by NodeNext resolution, which is how
+Vercel compiles `api/[...path].ts`). Local equivalent check:
+`npm run typecheck:server`.
+
+**`server/pricing.ts` type error?**
+That file is not part of the project -- pricing lives in `src/lib/pricing.ts`.
+If your repository contains anything in `server/` besides `core.ts`,
+`store.ts`, `index.ts`, delete it; it's a leftover from a partial copy.
+
+**Health check returns 500 / FUNCTION_INVOCATION_FAILED?**
+The deployment doesn't match this source tree. Redeploy the full folder
+(partial file copies are the usual cause). Then `/api/health` must return
+`{"ok":true,"storage":"postgres"}`.
+
 ## Notes & limits
 
 - **Health check**: `https://your-site.vercel.app/api/health` must return
