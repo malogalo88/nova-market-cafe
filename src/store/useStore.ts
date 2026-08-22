@@ -30,6 +30,7 @@ import { computeCart, type CartCalcLine, type CartTotals } from "../lib/pricing"
 import { applyPlaceQrOrder } from "../lib/qrOrderCore";
 import {
   apiLogin,
+  ensureQrCodesOnServer,
   fetchBootInfo,
   getAuthToken,
   httpAdapter,
@@ -285,6 +286,8 @@ interface AppStoreState {
   bootEmployees?: Array<BootInfo["employees"][number]>;
   init: () => Promise<void>;
   uploadLocalDbToServer: () => Promise<ActionResult>;
+  /** Server mode: re-guarantee the permanent printed QR ids exist server-side. */
+  restoreStandardQrCodes: () => Promise<ActionResult & { added?: string[] }>;
   currentUser: () => Employee | null;
   permissions: () => Permissions;
   login: (usernameOrId: string, pin: string) => Promise<ActionResult>;
@@ -552,6 +555,21 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         return { ok: true };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : "Upload failed." };
+      }
+    },
+
+    restoreStandardQrCodes: async () => {
+      if (get().mode !== "server") return { ok: false, error: "Not connected to the server." };
+      if (!get().serverAuthed) return { ok: false, error: "Sign in first." };
+      try {
+        const added = await ensureQrCodesOnServer();
+        if (added.length) {
+          const env = await httpAdapter.loadEnvelope!();
+          if (env) set({ db: env.db, dbRev: env.rev });
+        }
+        return { ok: true, added };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : "Request failed." };
       }
     },
 

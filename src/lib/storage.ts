@@ -170,14 +170,19 @@ async function api(path: string, opts: RequestInit = {}, timeoutMs = 10000): Pro
   }
 }
 
-/** Is this page being served by the NovaPOS server? */
-export async function probeServer(timeoutMs = 1500): Promise<boolean> {
-  try {
-    const r = await api("/api/health", {}, timeoutMs);
-    return r.ok;
-  } catch {
-    return false;
+/** Is this page being served by the NovaPOS server? Retried because a freshly
+ * deployed serverless function may need several seconds to cold-start. */
+export async function probeServer(): Promise<boolean> {
+  for (const timeoutMs of [3500, 3500]) {
+    try {
+      const r = await api("/api/health", {}, timeoutMs);
+      if (r.ok) return true;
+    } catch {
+      /* retry */
+    }
+    await new Promise((res) => setTimeout(res, 400));
   }
+  return false;
 }
 
 export interface BootInfo {
@@ -199,6 +204,17 @@ export async function apiLogin(username: string, pin: string): Promise<{ token: 
   const body = (await r.json()) as { ok: boolean; error?: string; token?: string; employeeId?: string };
   if (!r.ok || !body.ok || !body.token || !body.employeeId) throw new Error(body.error ?? "Wrong name or PIN.");
   return { token: body.token, employeeId: body.employeeId };
+}
+
+/** Ask the server to (re-)guarantee the permanent printed QR ids exist.
+ * Additive + idempotent: never touches existing or deleted custom codes. */
+export async function ensureQrCodesOnServer(): Promise<string[]> {
+  const r = await api("/api/staff/qr-codes/ensure", { method: "POST" });
+  if (r.status === 401) throw new UnauthorizedError();
+  if (!r.ok) throw new Error(`Server responded ${r.status}`);
+  const body = (await r.json()) as { ok: boolean; added?: string[] };
+  if (!body.ok) throw new Error("Server refused the request");
+  return body.added ?? [];
 }
 
 /** Full database adapter backed by the NovaPOS API (requires sign-in). */

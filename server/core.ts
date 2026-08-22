@@ -18,6 +18,32 @@ import type { DB, QrOrder } from "../src/lib/types";
 import { normalizeDB } from "../src/lib/storage";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore";
 import type { DbStore } from "./store";
+import { describeStorage } from "./store";
+
+/**
+ * QR codes printed on posters are permanent physical objects -- their ids must
+ * always resolve on the server. This guarantee is ADDITIVE and idempotent:
+ * existing codes are never modified, paused or deleted; only missing standard
+ * ids are appended. Run when a database is seeded or wholesale-uploaded so a
+ * migrated business can never lose its printed tables.
+ */
+const STANDARD_QR_CODES: Array<{ id: string; label: string }> = [
+  { id: "qr_table_1", label: "Table 1" },
+  { id: "qr_table_2", label: "Table 2" },
+  { id: "qr_counter", label: "Counter" },
+];
+
+export function ensureStandardQrCodes(db: DB): string[] {
+  const added: string[] = [];
+  const now = new Date().toISOString();
+  for (const std of STANDARD_QR_CODES) {
+    if (!db.qrCodes.some((q) => q.id === std.id)) {
+      db.qrCodes.push({ id: std.id, label: std.label, active: true, createdAt: now, scans: 0 });
+      added.push(std.id);
+    }
+  }
+  return added;
+}
 
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // stateless tokens cannot slide, so keep them long-lived
 const BODY_LIMIT = 20 * 1024 * 1024; // note: Vercel caps request bodies at ~4.5 MB
@@ -265,7 +291,9 @@ export async function handleApiRequest(
 
   switch (route) {
     case "GET /api/health":
-      json(res, 200, { ok: true, server: true, time: new Date().toISOString() });
+      // Deliberately touches no database -- must answer even when the DB is
+      // unreachable, and reports which backend is configured for diagnostics.
+      json(res, 200, { ok: true, server: true, storage: describeStorage(), time: new Date().toISOString() });
       return;
 
     case "GET /api/boot": {
@@ -347,6 +375,16 @@ export async function handleApiRequest(
           return { db: current, changed: false, value: { ok: false, stale: true, rev } };
         }
         const merged = mergeDbs(current, incoming, mode);
+        // Wholesale uploads (browser migration) always re-guarantee printed
+        // QR ids so an uploaded dataset without codes cannot break posters.
+        const ensured = mode === "replace" ? ensureStandardQrCodes(merged) : [];
+        if (ensured.length) {
+          logActivity(merged, {
+            type: "system",
+            action: "Standard QR codes restored",
+            detail: ensured.join(", "),
+          });
+        }
         return { db: merged, value: { ok: true, rev: rev + 1 } };
       });
 
@@ -465,6 +503,26 @@ export async function handleApiRequest(
         });
 
         json(res, outcome.value.status, outcome.value.body);
+        return;
+      }
+
+      // Staff repair: guarantee printed QR ids exist server-side without a
+      // full data re-upload (additive + idempotent).
+      if (req.method === "POST" && url.pathname === "/api/staff/qr-codes/ensure") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        type EnsureReply = { ok: true; added: string[] };
+        const result = await store.mutate<EnsureReply>((db) => {
+          const added = ensureStandardQrCodes(db);
+          if (added.length) {
+            logActivity(db, { type: "system", action: "Standard QR codes restored", detail: added.join(", ") });
+          }
+          return { db, changed: added.length > 0, value: { ok: true, added } };
+        });
+        json(res, 200, result.value);
         return;
       }
 

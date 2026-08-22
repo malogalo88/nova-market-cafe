@@ -57,6 +57,11 @@ export function chooseStore(dataDir?: string): DbStore {
   return new FileStore(path.join(dataDir ?? path.join(process.cwd(), "data"), "db.json"));
 }
 
+/** Which backend will chooseStore() pick? For diagnostics only. */
+export function describeStorage(): "postgres" | "file" {
+  return process.env.POSTGRES_URL || process.env.DATABASE_URL ? "postgres" : "file";
+}
+
 // ── Postgres ────────────────────────────────────────────────────────────────
 export class PgStore implements DbStore {
   private pool: pg.Pool;

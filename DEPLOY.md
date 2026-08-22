@@ -65,6 +65,14 @@ Handy at the counter; not required for phone ordering.
 
 ## Notes & limits
 
+- **Health check**: `https://your-site.vercel.app/api/health` must return
+  `{"ok":true,"storage":"postgres",...}`. If it says `"storage":"file"`, the
+  Postgres database isn't attached to the project (Vercel -> Storage).
+- **Printed QR codes are permanent**: the ids `qr_table_1` (Table 1),
+  `qr_table_2` (Table 2) and `qr_counter` (Counter) are guaranteed to exist
+  server-side -- they are re-added automatically whenever data is seeded or
+  migrated. Settings -> Data -> "Restore standard QR codes" repairs this
+  manually anytime; your own/custom codes are never modified.
 - Vercel caps request bodies around 4.5 MB: keep product/logo images small.
 - Staff dashboards poll every ~4 s (tunable via `STAFF_POLL_MS` in
   `src/store/useStore.ts`). Lower intervals = faster order alerts but more

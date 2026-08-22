@@ -5,6 +5,10 @@
  * exact same router as the local server (server/core.ts). Data persists in
  * Postgres (set POSTGRES_URL / DATABASE_URL, e.g. Vercel Postgres / Neon),
  * which is what keeps QR ordering alive when no laptop is running.
+ *
+ * NOTE: the store is created PER REQUEST, never at module scope -- any module-
+ * scope failure (bad env, missing file) would crash the function on import and
+ * turn every endpoint into an opaque 500.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { handleApiRequest, json } from "../server/core";
@@ -18,15 +22,11 @@ export const config = {
   },
 };
 
-// One store per lambda instance; connections are cached on globalThis inside
-// PgStore so warm invocations reuse them.
-const store = chooseStore();
-
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const host = req.headers.host ?? "localhost";
-  const url = new URL(req.url ?? "/api", `http://${host}`);
   try {
-    await handleApiRequest(req, res, url, store);
+    const host = req.headers.host ?? "localhost";
+    const url = new URL(req.url ?? "/api", `http://${host}`);
+    await handleApiRequest(req, res, url, chooseStore());
   } catch (err) {
     console.error("[api]", (err as Error).message);
     if (!res.headersSent) {

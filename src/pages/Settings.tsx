@@ -7,6 +7,7 @@ import {
   Heart,
   Moon,
   Palette,
+  QrCode,
   RotateCcw,
   Sparkles,
   Sun,
@@ -446,6 +447,29 @@ export default function Settings(): React.ReactElement {
                 One-time migration: run this on the computer where you've been using NovaPOS so your existing menu,
                 sales history and printed QR codes keep working across all devices.
               </p>
+              {store.serverAuthed && (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      const res = await store.restoreStandardQrCodes();
+                      if (res.ok) {
+                        toast.success(
+                          res.added && res.added.length
+                            ? `Restored: ${res.added.join(", ")}`
+                            : "All standard QR codes already exist on the server"
+                        );
+                      } else toast.error(res.error);
+                    }}
+                  >
+                    <QrCode size={15} /> Restore standard QR codes on the server
+                  </Button>
+                  <p className="text-xs text-muted">
+                    Guarantees the permanent printed codes (Table 1, Table 2, Counter) exist for customers — existing or
+                    custom codes are never touched.
+                  </p>
+                </>
+              )}
             </Card>
           )}
 
