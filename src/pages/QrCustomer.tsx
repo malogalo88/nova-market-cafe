@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Check,
@@ -21,6 +21,7 @@ import {
   fetchPublicConfig,
   fetchSessionOrders,
   postPublicOrder,
+  probeServer,
   serverWasProbed,
   type PublicConfig,
 } from "../lib/storage";
@@ -69,7 +70,10 @@ const MSG_CODE_INVALID = "This ordering code isn't valid anymore.";
 const MSG_CODE_PAUSED = "This ordering code has been paused. Please order at the counter.";
 
 export default function QrCustomer(): React.ReactElement {
-  const { qrId = "" } = useParams();
+  // TEMP DIAGNOSTICS: raw + trimmed id logged so invisible characters from a
+  // scanned poster (trailing space/newline) can't hide. Remove once resolved.
+  const { qrId: rawQrId = "" } = useParams();
+  const qrId = rawQrId.trim();
   const db = useAppStore((s) => s.db);
   const mode = useAppStore((s) => s.mode);
   const storeReady = useAppStore((s) => s.ready);
@@ -77,6 +81,28 @@ export default function QrCustomer(): React.ReactElement {
   // been detected at all this session, always talk to it directly — even if
   // the rest of the app degraded to local mode after a transient boot error.
   const isRemote = mode === "server" || serverWasProbed();
+
+  // TEMP DIAGNOSTICS: identify exactly what was extracted from the URL.
+  useEffect(() => {
+    console.info(
+      `[QR][dbg] mount · href=${JSON.stringify(window.location.href)} · rawQrId=${JSON.stringify(rawQrId)} · qrId=${JSON.stringify(qrId)}`
+    );
+  }, [rawQrId, qrId]);
+
+  // Self-sufficiency: don't depend on app init() having probed first — if no
+  // health check has succeeded yet, probe right now and re-render on success.
+  const [, bumpProbeTick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (serverWasProbed()) return;
+    let alive = true;
+    void probeServer().then((ok) => {
+      console.info(`[QR][dbg] self-probe result: ${ok}`);
+      if (alive && ok) bumpProbeTick();
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const [cart, setCart] = useState<Cart>({});
   const [search, setSearch] = useState("");
@@ -99,17 +125,35 @@ export default function QrCustomer(): React.ReactElement {
   // ── Server mode: fetch the public menu and session orders on a loop so the
   // phone stays in sync (pauses, stock levels, staff accepting orders…).
   useEffect(() => {
-    if (!isRemote) return;
+    if (!isRemote) {
+      console.info(`[QR][dbg] remote flow OFF · mode=${mode} probed=${serverWasProbed()}`);
+      return;
+    }
     let alive = true;
+    let cfgFails = 0;
     const pullCfg = (): void => {
+      console.info(
+        `[QR][dbg] GET /api/public/config?code=${JSON.stringify(qrId || null)} (attempt ${cfgFails + 1})`
+      );
       fetchPublicConfig(qrId || null)
         .then((cfg) => {
           if (!alive) return;
+          cfgFails = 0;
+          // TEMP DIAGNOSTICS: show the response the component actually received.
+          console.info(
+            `[QR][dbg] config response · codeValid=${cfg.codeValid} qrEnabled=${cfg.qr?.enabled} products=${cfg.products?.length} locationLabel=${JSON.stringify(cfg.locationLabel)}`
+          );
           setRemoteCfg(cfg);
           setNetError("");
         })
-        .catch(() => {
-          if (alive) setNetError("Can't reach the store right now. Check your connection and try again.");
+        .catch((err: unknown) => {
+          cfgFails++;
+          console.info(`[QR][dbg] config fetch FAILED (#${cfgFails}): ${err instanceof Error ? err.message : String(err)}`);
+          // One silent retry absorbs a momentary network blip before we show
+          // the offline message.
+          if (!alive) return;
+          if (cfgFails >= 2) setNetError("Can't reach the store right now. Check your connection and try again.");
+          else window.setTimeout(pullCfg, 1000);
         });
     };
     const pullOrders = (): void => {
@@ -149,6 +193,13 @@ export default function QrCustomer(): React.ReactElement {
       : !code ? MSG_CODE_INVALID
       : !code.active ? MSG_CODE_PAUSED
       : null;
+
+  // TEMP DIAGNOSTICS: log the final decision and which inputs produced it.
+  useEffect(() => {
+    console.info(
+      `[QR][dbg] decision · storeReady=${storeReady} mode=${mode} isRemote=${isRemote} netError=${JSON.stringify(netError)} remoteCfg=${remoteCfg ? `{codeValid:${remoteCfg.codeValid},qrEnabled:${remoteCfg.qr.enabled}}` : "null"} localCode=${db.qrCodes.some((q) => q.id === qrId) ? "found" : "missing"} → blockedReason=${JSON.stringify(blockedReason)}`
+    );
+  }, [storeReady, mode, isRemote, netError, remoteCfg, blockedReason, qrId, db.qrCodes]);
 
   const allItems: MenuItem[] = useMemo(
     () =>
