@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom variables and utilities */
+:root {
+  --bg: #0a0a0f;
+  --bg-secondary: #12121a;
+  --fg: #e8e8ec;
+  --muted: #6b6b80;
+  --accent: #00d4aa;
+  --accent-dim: rgba(0, 212, 170, 0.15);
+  --card: #1a1a24;
+  --border: #2a2a3a;
+}
+
+.background {
+  background: var(--bg);
+}
+
+.text-primary {
+  color: var(--accent);
+}
+
+.border-primary {
+  border-color: var(--accent);
+}
+
+.bg-card {
+  background: var(--card);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #12121a;
+  --color-bg-card: #1a1a2e;
+  --color-bg-card-hover: #222240;
+  --color-bg-input: #16162a;
+  --color-border: #2a2a4a;
+  --color-border-active: #6c63ff;
+  --color-text-primary: #e8e8f0;
+  --color-text-secondary: #8888a8;
+  --color-text-muted: #5a5a7a;
+  --color-accent: #6c63ff;
+  --color-accent-hover: #7d75ff;
+  --color-accent-dim: #3d3899;
+  --color-green: #4ade80;
+  --color-green-dim: #166534;
+  --color-yellow: #facc15;
+  --color-yellow-dim: #713f12;
+  --color-red: #f87171;
+  --color-red-dim: #7f1d1d;
+  --color-blue: #60a5fa;
+  --color-orange: #fb923c;
+  --color-purple: #c084fc;
+  --color-cyan: #22d3ee;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px rgba(108, 99, 255, 0.15);
+}
+
+.glow-green {
+  box-shadow: 0 0 15px rgba(74, 222, 128, 0.2);
+}
+
+.glow-red {
+  box-shadow: 0 0 15px rgba(248, 113, 113, 0.2);
+}
+
+.card-gradient {
+  background: linear-gradient(135deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%);
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1033 50%, #0a0a1a 100%);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #5046e5 100%);
+  transition: all 0.2s;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--color-accent-hover) 0%, #6c63ff 100%);
+  box-shadow: 0 4px 20px rgba(108, 99, 255, 0.4);
+}
+
+.fps-bar {
+  transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(108, 99, 255, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(108, 99, 255, 0.6); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
