@@ -46,11 +46,29 @@ export interface DbStore {
 
 const ROW_ID = "app";
 
+/** Every connection-string env var we accept. Vercel's Neon/Postgres
+ * integrations inject several names depending on how the database was added;
+ * accepting the common ones means "connect database -> it just works". */
+const PG_ENV_VARS = ["POSTGRES_URL", "DATABASE_URL", "POSTGRESQL_URL"] as const;
+
+function firstPgEnv(): { url: string; source: string } {
+  for (const name of PG_ENV_VARS) {
+    const v = process.env[name];
+    if (v && v.trim()) return { url: v.trim(), source: name };
+  }
+  return { url: "", source: "" };
+}
+
+/** Same lookup chooseStore uses — shared with the token-signing secret logic. */
+export function databaseUrl(): string {
+  return firstPgEnv().url;
+}
+
 /** Pick the right store for this environment. */
 export function chooseStore(dataDir?: string): DbStore {
-  const url = process.env.POSTGRES_URL || process.env.DATABASE_URL || "";
+  const { url, source } = firstPgEnv();
   if (url) {
-    console.log("[store] using Postgres database");
+    console.log(`[store] using Postgres database (from ${source})`);
     return new PgStore(url);
   }
   console.log("[store] no database URL set — using local file storage (single-device/LAN mode)");
@@ -59,7 +77,7 @@ export function chooseStore(dataDir?: string): DbStore {
 
 /** Which backend will chooseStore() pick? For diagnostics only. */
 export function describeStorage(): "postgres" | "file" {
-  return process.env.POSTGRES_URL || process.env.DATABASE_URL ? "postgres" : "file";
+  return firstPgEnv().url ? "postgres" : "file";
 }
 
 // ── Postgres ────────────────────────────────────────────────────────────────

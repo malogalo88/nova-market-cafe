@@ -18,7 +18,7 @@ import type { DB, QrOrder } from "../src/lib/types";
 import { normalizeDB } from "../src/lib/storage";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore";
 import type { DbStore } from "./store";
-import { describeStorage } from "./store";
+import { databaseUrl, describeStorage } from "./store";
 
 /**
  * QR codes printed on posters are permanent physical objects -- their ids must
@@ -61,7 +61,7 @@ async function signingSecret(): Promise<string> {
     secretCache = explicit;
     return secretCache;
   }
-  const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || "";
+  const dbUrl = databaseUrl();
   if (!dbUrl) {
     try {
       const fsMod = await import("node:fs/promises");
