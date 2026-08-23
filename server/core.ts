@@ -1,4 +1,4 @@
-/**
+﻿/**
  * NovaPOS shared API core -- one request handler used by BOTH:
  *   - server/index.ts   (local single-process server, LAN mode)
  *   - api/[...path].ts  (Vercel serverless function, production)
@@ -18,7 +18,7 @@ import type { DB, QrOrder } from "../src/lib/types.js";
 import { normalizeDB } from "../src/lib/storage.js";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore.js";
 import type { DbStore } from "./store.js";
-import { chooseStore, databaseUrl, describeStorage } from "./store.js";
+import { chooseChatStore, chooseStore, databaseUrl, describeStorage, type ChatMessageRow } from "./store.js";
 
 /**
  * QR codes printed on posters are permanent physical objects -- their ids must
@@ -43,6 +43,39 @@ export function ensureStandardQrCodes(db: DB): string[] {
     }
   }
   return added;
+}
+
+// -- Staff chat & presence ----------------------------------------------------
+// Customers have no access to any /api/chat/* route: every one of them starts
+// with the same token check as the rest of the staff API, and none of them is
+// reachable from the public ordering endpoints.
+const CHAT_ONLINE_MS = 25_000; // missed heartbeats longer than this â†’ offline
+const CHAT_AWAY_MS = 90_000; // no reported activity for this long â†’ away
+
+type PresenceStatus = "online" | "away" | "offline";
+function chatStatusOf(p: { lastBeatAt: number; lastActiveAt: number }, now: number): PresenceStatus {
+  if (now - p.lastBeatAt > CHAT_ONLINE_MS) return "offline";
+  if (now - p.lastActiveAt > CHAT_AWAY_MS) return "away";
+  return "online";
+}
+
+/** Validate + normalize a chat channel for THIS user. DM channels are only
+ *  usable by their two participants â€” everyone else gets null. */
+function parseChatChannel(raw: string | null | undefined, meId: string): string | null {
+  if (!raw) return null;
+  if (raw === "staff") return "staff";
+  const m = /^dm:([^:\s]+):([^:\s]+)$/.exec(raw);
+  if (!m) return null;
+  const [, a, b] = m;
+  if (a === b || (a !== meId && b !== meId)) return null;
+  return `dm:${[a, b].sort().join(":")}`;
+}
+
+/** One chat store per server process / warm lambda instance. */
+let chatStoreInstance: ReturnType<typeof chooseChatStore> | null = null;
+function chatStore(): ReturnType<typeof chooseChatStore> {
+  if (!chatStoreInstance) chatStoreInstance = chooseChatStore();
+  return chatStoreInstance;
 }
 
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // stateless tokens cannot slide, so keep them long-lived
@@ -507,7 +540,7 @@ export async function handleApiRequest(
         return;
       }
       const order = result.value.value;
-      console.log(`[order] ${order.number} · ${order.locationLabel ?? "walk-up"} · total ${order.total.toFixed(2)} (rev ${result.rev})`);
+      console.log(`[order] ${order.number} Â· ${order.locationLabel ?? "walk-up"} Â· total ${order.total.toFixed(2)} (rev ${result.rev})`);
       json(res, 200, { ok: true, value: customerView(order) });
       return;
     }
@@ -569,7 +602,7 @@ export async function handleApiRequest(
           logActivity(db, {
             type: "system",
             action: "Customer cancelled order",
-            detail: `${order.number}${order.locationLabel ? ` · ${order.locationLabel}` : ""}`,
+            detail: `${order.number}${order.locationLabel ? ` Â· ${order.locationLabel}` : ""}`,
           });
           return { db, value: { status: 200, body: { ok: true } } };
         });
@@ -595,6 +628,174 @@ export async function handleApiRequest(
           return { db, changed: added.length > 0, value: { ok: true, added } };
         });
         json(res, 200, result.value);
+        return;
+      }
+
+      // â”€â”€ Staff chat & presence (authenticated staff only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Heartbeat: refreshes my presence and returns the full lightweight
+      // chat snapshot â€” presence list, per-channel unread counts, active
+      // typers. This is the ONLY recurring chat request; it never ships
+      // message bodies or any business data.
+      if (req.method === "POST" && url.pathname === "/api/chat/heartbeat") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const snap = await store.get();
+        const emp = snap.db.employees.find((e) => e.id === employeeId && e.status === "active");
+        if (!emp) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const beatBody = (await readBody(req).catch(() => null)) as { activeNow?: unknown } | null;
+        await chatStore().heartbeat({ id: emp.id, name: emp.name, role: emp.role }, beatBody?.activeNow === true);
+        const now = Date.now();
+        const rows = await chatStore().presence();
+        const activeIds = new Set(snap.db.employees.filter((e) => e.status === "active").map((e) => e.id));
+        const presence = rows
+          .filter((p) => activeIds.has(p.employeeId))
+          .map((p) => ({
+            id: p.employeeId,
+            name: p.name,
+            role: p.role,
+            status: chatStatusOf(p, now),
+            lastSeenAt: p.lastSeenAt,
+          }));
+        const unread = await chatStore().unreadCounts(employeeId);
+        const typing = (await chatStore().typing())
+          .filter((t) => t.employeeId !== employeeId && t.untilAt > now && activeIds.has(t.employeeId))
+          .map((t) => ({ employeeId: t.employeeId, channel: t.channel }));
+        const meRow = rows.find((r) => r.employeeId === employeeId);
+        json(res, 200, {
+          ok: true,
+          serverTime: now,
+          myStatus: meRow ? chatStatusOf(meRow, now) : "online",
+          presence,
+          unread,
+          typing,
+        });
+        return;
+      }
+
+      // Explicit sign-out: go offline immediately instead of waiting out the
+      // heartbeat timeout.
+      if (req.method === "POST" && url.pathname === "/api/chat/leave") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        await chatStore().leave(employeeId);
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/chat/messages") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const channel = parseChatChannel(url.searchParams.get("channel"), employeeId);
+        if (!channel) {
+          json(res, 400, { ok: false, error: "Invalid channel." });
+          return;
+        }
+        const limitRaw = Math.floor(Number(url.searchParams.get("limit") ?? 50));
+        const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 50, 1), 100);
+        const afterRaw = url.searchParams.get("after");
+        const beforeRaw = url.searchParams.get("before");
+        let msgs: ChatMessageRow[];
+        let hasMore = false;
+        if (afterRaw !== null && Number.isFinite(Number(afterRaw))) {
+          // Incremental poll: only messages newer than what I already have.
+          msgs = await chatStore().messagesAfter(channel, Number(afterRaw), limit + 1);
+          hasMore = msgs.length > limit;
+          if (hasMore) msgs = msgs.slice(0, limit);
+        } else if (beforeRaw !== null && Number.isFinite(Number(beforeRaw))) {
+          // Scrollback pagination: the page older than a known message.
+          const page = await chatStore().messagesBefore(channel, Number(beforeRaw), limit + 1);
+          hasMore = page.length > limit;
+          msgs = (hasMore ? page.slice(0, limit) : page); // ascending
+        } else {
+          const latest = await chatStore().latestMessages(channel, limit);
+          msgs = latest.msgs;
+          hasMore = latest.hasMore;
+        }
+        const reads = await chatStore().readsFor(channel);
+        const minOtherRead = reads
+          .filter((r) => r.employeeId !== employeeId)
+          .reduce((min, r) => Math.min(min, r.lastReadSeq), Number.MAX_SAFE_INTEGER);
+        json(res, 200, {
+          ok: true,
+          messages: msgs,
+          hasMore,
+          othersReadUpTo: minOtherRead === Number.MAX_SAFE_INTEGER ? 0 : minOtherRead,
+        });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/chat/messages") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const snap = await store.get();
+        const emp = snap.db.employees.find((e) => e.id === employeeId && e.status === "active");
+        if (!emp) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const sendBody = (await readBody(req)) as { channel?: unknown; body?: unknown } | null;
+        const channel = parseChatChannel(typeof sendBody?.channel === "string" ? sendBody.channel : null, employeeId);
+        const rawText = typeof sendBody?.body === "string" ? sendBody.body.trim() : "";
+        // Reject rather than silently truncate: a cut-off message would read
+        // as complete to the recipients.
+        if (!channel || !rawText || rawText.length > 2000) {
+          json(res, 400, { ok: false, error: rawText.length > 2000 ? "Message too long (max 2000 characters)." : "Invalid message." });
+          return;
+        }
+        const message = await chatStore().insertMessage(channel, employeeId, emp.name, rawText);
+        // Sending implies having read the conversation up to this point.
+        await chatStore().setRead(employeeId, channel, message.seq);
+        json(res, 200, { ok: true, message });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/chat/read") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const readReq = (await readBody(req)) as { channel?: unknown; upToSeq?: unknown } | null;
+        const channel = parseChatChannel(typeof readReq?.channel === "string" ? readReq.channel : null, employeeId);
+        const upToSeq = Math.max(0, Math.floor(Number(readReq?.upToSeq ?? 0)));
+        if (!channel || !Number.isFinite(upToSeq)) {
+          json(res, 400, { ok: false, error: "Invalid request." });
+          return;
+        }
+        await chatStore().setRead(employeeId, channel, upToSeq);
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/chat/typing") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const typeBody = (await readBody(req)) as { channel?: unknown } | null;
+        const channel = parseChatChannel(typeof typeBody?.channel === "string" ? typeBody.channel : null, employeeId);
+        if (!channel) {
+          json(res, 400, { ok: false, error: "Invalid channel." });
+          return;
+        }
+        await chatStore().setTyping(employeeId, channel, Date.now() + 6000);
+        json(res, 200, { ok: true });
         return;
       }
 

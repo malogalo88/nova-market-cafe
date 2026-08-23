@@ -9,6 +9,7 @@ import {
   LogOut,
   type LucideIcon,
   Menu,
+  MessagesSquare,
   Moon,
   Package,
   QrCode as QrCodeIcon,
@@ -28,6 +29,7 @@ import { useAppStore } from "../store/useStore";
 import { ROLE_LABELS, type Permissions } from "../lib/permissions";
 import { Badge, IconButton, Modal, toast } from "./ui";
 import { relativeTime } from "../lib/format";
+import { setChatNotifier, startChatPresence, stopChatPresence, useChatSnapshot } from "../lib/chat";
 
 interface NavItem {
   to: string;
@@ -75,6 +77,7 @@ const NAV: NavSection[] = [
   {
     title: "System",
     items: [
+      { to: "/chat", label: "Staff Chat", icon: MessagesSquare, show: () => true },
       { to: "/notifications", label: "Notifications", icon: Bell, show: () => true },
       { to: "/qr", label: "QR Ordering", icon: QrCodeIcon, show: (p) => p.manageQr },
       { to: "/employees", label: "Employees", icon: UserCog, show: (p) => p.viewActivityLog || p.manageEmployees },
@@ -141,6 +144,17 @@ export default function Layout(): React.ReactElement {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const unread = db.notifications.filter((n) => !n.read).length;
+  const chatTotal = useChatSnapshot().totalUnread;
+
+  // 💬 Staff chat: presence heartbeat + global message notifications for the
+  // whole staff area. Runs while any staff page is open; stops on unmount.
+  useEffect(() => {
+    if (!user) return;
+    setChatNotifier((text) => toast.info(text));
+    startChatPresence({ id: user.id, name: user.name });
+    return () => stopChatPresence(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -226,6 +240,9 @@ export default function Layout(): React.ReactElement {
                     <span className="flex-1 truncate">{item.label}</span>
                     {item.to === "/purchase-orders" && db.purchaseOrders.some((po) => po.status === "ordered") && (
                       <Badge tone="info">In transit</Badge>
+                    )}
+                    {item.to === "/chat" && chatTotal > 0 && (
+                      <Badge tone="accent">{chatTotal > 99 ? "99+" : chatTotal}</Badge>
                     )}
                   </NavLink>
                 ))}

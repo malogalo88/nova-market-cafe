@@ -166,7 +166,8 @@ export function setAuthToken(token: string | null): void {
   }
 }
 
-async function api(path: string, opts: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
+/** Shared fetch helper (auth header + timeout). Also used by the chat client. */
+export async function api(path: string, opts: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const token = getAuthToken();
