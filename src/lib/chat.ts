@@ -92,14 +92,30 @@ export async function fetchChatMessages(opts: {
   if (opts.after !== undefined) q.set("after", String(opts.after));
   if (opts.before !== undefined) q.set("before", String(opts.before));
   if (opts.limit !== undefined) q.set("limit", String(opts.limit));
-  const r = await api(`/api/chat/messages?${q.toString()}`);
-  if (!r.ok) throw new Error(`Server responded ${r.status}`);
-  const body = (await r.json()) as { ok: boolean; messages: ChatMessage[]; hasMore: boolean; othersReadUpTo: number };
-  return { messages: body.messages ?? [], hasMore: !!body.hasMore, othersReadUpTo: body.othersReadUpTo ?? 0 };
+  dbg(`messages poll request channel=${opts.channel} after=${opts.after ?? "-"} before=${opts.before ?? "-"} limit=${opts.limit ?? "-"}`);
+  const t0 = Date.now();
+  try {
+    const r = await api(`/api/chat/messages?${q.toString()}`);
+    if (!r.ok) {
+      dbg(`messages poll response HTTP ${r.status} in ${Date.now() - t0}ms`);
+      throw new Error(`Server responded ${r.status}`);
+    }
+    const body = (await r.json()) as { ok: boolean; messages: ChatMessage[]; hasMore: boolean; othersReadUpTo: number };
+    dbg(`messages poll response ok in ${Date.now() - t0}ms count=${body.messages?.length ?? 0} hasMore=${body.hasMore}`);
+    return { messages: body.messages ?? [], hasMore: !!body.hasMore, othersReadUpTo: body.othersReadUpTo ?? 0 };
+  } catch (err: unknown) {
+    if (!(err instanceof Error) || !err.message.startsWith("Server responded")) {
+      dbg(`messages poll NETWORK error after ${Date.now() - t0}ms: ${String(err)}`);
+    }
+    throw err;
+  }
 }
 
 export async function sendChatMessage(channel: ChatChannel, body: string): Promise<ChatMessage> {
+  dbg(`send message request channel=${channel} len=${body.length}`);
+  const t0 = Date.now();
   const r = await api("/api/chat/messages", { method: "POST", body: JSON.stringify({ channel, body }) }, 15000);
+  dbg(`send message response HTTP ${r.status} in ${Date.now() - t0}ms`);
   if (!r.ok) throw new Error(`Server responded ${r.status}`);
   const parsed = (await r.json()) as { ok: boolean; message: ChatMessage };
   return parsed.message;
@@ -115,7 +131,17 @@ export async function chatSetTyping(channel: ChatChannel): Promise<void> {
 
 // ── App-wide chat state (singleton + useSyncExternalStore) ──────────────────
 
-export type ChatConnection = "idle" | "connecting" | "online" | "disconnected";
+/**
+ * Connection states, deliberately split so the UI never conflates "your
+ * internet is down" with "the chat server is briefly unreachable":
+ *  • idle         — not signed in / presence stopped
+ *  • connecting   — signed in, first heartbeat still in flight
+ *  • online       — last heartbeat confirmed by the server
+ *  • reconnecting — internet looks fine (browser online) but a heartbeat
+ *                   failed; retrying with exponential backoff
+ *  • offline      — the BROWSER reports no network (navigator.onLine === false)
+ */
+export type ChatConnection = "idle" | "connecting" | "online" | "reconnecting" | "offline";
 
 export interface ChatSnapshot {
   connection: ChatConnection;
@@ -159,9 +185,23 @@ function getSnapshot(): ChatSnapshot {
 
 let pollCleanup: (() => void) | null = null;
 let beatFailures = 0;
+/** Backoff gate: no network beat before this timestamp (0 = fire freely). */
+let nextBeatAllowedAt = 0;
 let lastUserInputAt = Date.now();
 let inputAttached = false;
+let networkAttached = false;
 let myIdentity: { id: string; name: string } | null = null;
+
+/** TEMPORARY diagnostics — remove once chat connection stability is confirmed. */
+function dbg(...args: unknown[]): void {
+  console.info("[CHAT][dbg]", ...args);
+}
+
+function setConnection(next: ChatConnection): void {
+  if (snapshot.connection === next) return;
+  dbg(`connection transition: ${snapshot.connection} -> ${next}`);
+  setSnapshot({ connection: next });
+}
 
 /** Which conversation is open on screen right now (toast suppression). */
 let viewedChannel: ChatChannel | null = null;
@@ -178,6 +218,25 @@ function attachInputTracking(): void {
   window.addEventListener("pointerdown", mark, { passive: true });
   window.addEventListener("keydown", mark);
   window.addEventListener("touchstart", mark, { passive: true });
+}
+
+/** Track browser-level connectivity so we can tell the two failure kinds apart. */
+function attachNetworkTracking(): void {
+  if (networkAttached || typeof window === "undefined") return;
+  networkAttached = true;
+  const onChange = (): void => {
+    dbg(`browser network event: navigator.onLine=${navigator.onLine}`);
+    if (!navigator.onLine) {
+      setConnection("offline");
+    } else {
+      // Internet just came back — beat immediately instead of waiting out
+      // whatever backoff was in effect.
+      nextBeatAllowedAt = 0;
+      void runBeat();
+    }
+  };
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
 }
 
 /** Fire a toast without importing the UI module into this lib's hot path. */
@@ -218,52 +277,89 @@ async function checkMentionsAndPreview(prevStaffUnread: number, nowStaffUnread: 
   }
 }
 
+/** One presence beat. Cheap, idempotent, and safe to call at any moment —
+ *  the exponential-backoff gate inside decides whether it actually hits the
+ *  network. */
+async function runBeat(): Promise<void> {
+  if (!myIdentity || !pollCleanup) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // Browser itself reports no network. Don't waste requests; the "online"
+    // event will trigger an immediate beat when connectivity returns.
+    setConnection("offline");
+    dbg("beat skipped: browser reports offline");
+    return;
+  }
+  if (Date.now() < nextBeatAllowedAt) {
+    dbg(`beat gated by backoff (${Math.ceil((nextBeatAllowedAt - Date.now()) / 1000)}s left)`);
+    return;
+  }
+  const activeNow = Date.now() - lastUserInputAt < 60_000 && !(typeof document !== "undefined" && document.hidden);
+  dbg(`heartbeat request (active=${activeNow}, priorFailures=${beatFailures})`);
+  const t0 = Date.now();
+  try {
+    const r = await chatHeartbeat(activeNow);
+    if (beatFailures > 0) dbg(`recovered after ${beatFailures} failed beat(s) in ${Date.now() - t0}ms`);
+    beatFailures = 0;
+    nextBeatAllowedAt = 0;
+    const hadBaseline = knownUnread !== null;
+    const prev = knownUnread ?? {};
+    // New DM → toast with sender name; staff traffic → enriched toast
+    // (preview or @mention) via a targeted incremental fetch.
+    for (const [ch, n] of Object.entries(r.unread)) {
+      const before = prev[ch] ?? 0;
+      if (!hadBaseline || n <= before || ch === viewedChannel) continue;
+      if (ch.startsWith("dm:")) {
+        const otherId = ch.split(":").find((part) => part !== myIdentity?.id);
+        const nm = r.presence.find((p) => p.id === otherId)?.name ?? "A colleague";
+        notify?.(`New message from ${nm}`);
+      } else if (ch === STAFF_CHANNEL) {
+        void checkMentionsAndPreview(before, n);
+      }
+    }
+    knownUnread = { ...r.unread };
+    setSnapshot({
+      myStatus: r.myStatus,
+      presence: r.presence,
+      unread: r.unread,
+      totalUnread: Object.values(r.unread).reduce((a, b) => a + b, 0),
+      typing: r.typing,
+    });
+    setConnection("online");
+    dbg(`heartbeat ok in ${Date.now() - t0}ms status=${r.myStatus} presence=${r.presence.length} unreadTotal=${Object.values(r.unread).reduce((a, b) => a + b, 0)} typing=${r.typing.length}`);
+  } catch (err: unknown) {
+    if (err instanceof UnauthorizedChatError) {
+      dbg("heartbeat rejected (401): token expired or invalid — stopping chat presence. This is an auth problem, not a connectivity problem.");
+      stopChatPresence(false);
+      return;
+    }
+    beatFailures++;
+    // Exponential backoff: 5s → 10s → 20s → 40s → capped at 60s. Any success
+    // resets both counters and restores Online instantly.
+    const waitMs = Math.min(60_000, 5_000 * Math.pow(2, Math.min(beatFailures - 1, 4)));
+    nextBeatAllowedAt = Date.now() + waitMs;
+    const browserOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+    setConnection(browserOffline ? "offline" : "reconnecting");
+    if (browserOffline) setSnapshot({ myStatus: "offline" });
+    dbg(
+      `heartbeat failed (#${beatFailures}) after ${Date.now() - t0}ms: ${String(err)} — retrying in ~${Math.round(waitMs / 1000)}s, state=${browserOffline ? "offline" : "reconnecting"}`
+    );
+  }
+}
+
 /** Start the app-wide presence heartbeat (idempotent). Call on sign-in. */
 export function startChatPresence(me: { id: string; name: string }): void {
   myIdentity = me;
   attachInputTracking();
-  setSnapshot({ connection: "connecting" });
+  attachNetworkTracking();
+  setSnapshot({ connection: "connecting", myStatus: "offline" });
+  dbg(`presence started for ${me.name} (navigator.onLine=${typeof navigator !== "undefined" ? navigator.onLine : "?"})`);
   if (pollCleanup) return;
-  const beat = (): void => {
-    const activeNow = Date.now() - lastUserInputAt < 60_000 && !(typeof document !== "undefined" && document.hidden);
-    chatHeartbeat(activeNow)
-      .then((r) => {
-        beatFailures = 0;
-        const hadBaseline = knownUnread !== null;
-        const prev = knownUnread ?? {};
-        // New DM → toast with sender name; staff traffic → enriched toast
-        // (preview or @mention) via a targeted incremental fetch.
-        for (const [ch, n] of Object.entries(r.unread)) {
-          const before = prev[ch] ?? 0;
-          if (!hadBaseline || n <= before || ch === viewedChannel) continue;
-          if (ch.startsWith("dm:")) {
-            const otherId = ch.split(":").find((part) => part !== me.id);
-            const nm = r.presence.find((p) => p.id === otherId)?.name ?? "A colleague";
-            notify?.(`New message from ${nm}`);
-          } else if (ch === STAFF_CHANNEL) {
-            void checkMentionsAndPreview(before, n);
-          }
-        }
-        knownUnread = { ...r.unread };
-        setSnapshot({
-          connection: "online",
-          myStatus: r.myStatus,
-          presence: r.presence,
-          unread: r.unread,
-          totalUnread: Object.values(r.unread).reduce((a, b) => a + b, 0),
-          typing: r.typing,
-        });
-      })
-      .catch((err: unknown) => {
-        if (err instanceof UnauthorizedChatError) {
-          stopChatPresence(false);
-          return;
-        }
-        beatFailures++;
-        if (beatFailures >= 2) setSnapshot({ connection: "disconnected", myStatus: "offline" });
-      });
-  };
-  pollCleanup = smartPoll(beat, 5000);
+  pollCleanup = smartPoll(
+    () => {
+      void runBeat();
+    },
+    5000
+  );
 }
 
 /** Stop heartbeats. markLeft=false when the server already rejected us. */
@@ -275,6 +371,8 @@ export function stopChatPresence(markLeft = true): void {
   lastStaffSeq = 0;
   viewedChannel = null;
   beatFailures = 0;
+  nextBeatAllowedAt = 0;
+  dbg(`presence stopped (markLeft=${markLeft})`);
   setSnapshot({
     connection: "idle",
     myStatus: "offline",

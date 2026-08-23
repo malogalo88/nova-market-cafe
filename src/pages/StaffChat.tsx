@@ -346,8 +346,14 @@ export default function StaffChat(): React.ReactElement {
       <div className="border-b px-3 py-3" style={{ borderColor: "var(--border)" }}>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-[11px] font-bold tracking-[0.08em] text-muted uppercase">Staff online</h3>
-          <Badge tone={chat.connection === "online" ? "success" : chat.connection === "disconnected" ? "danger" : "neutral"}>
-            {chat.connection === "online" ? "Live" : chat.connection === "disconnected" ? "Reconnecting" : "…"}
+          <Badge tone={chat.connection === "online" ? "success" : chat.connection === "offline" ? "danger" : chat.connection === "reconnecting" ? "warn" : "neutral"}>
+            {chat.connection === "online"
+              ? "Live"
+              : chat.connection === "reconnecting"
+                ? "Reconnecting…"
+                : chat.connection === "offline"
+                  ? "Offline"
+                  : "…"}
           </Badge>
         </div>
         <ul className="space-y-1">
@@ -474,7 +480,7 @@ export default function StaffChat(): React.ReactElement {
           </div>
         </header>
 
-        {chat.connection === "disconnected" && (
+        {chat.connection === "offline" && (
           <div
             className="px-3 py-1.5 text-center text-[12.5px] font-bold"
             style={{
@@ -482,7 +488,18 @@ export default function StaffChat(): React.ReactElement {
               color: "var(--danger)",
             }}
           >
-            Connection lost — messages will send once you're back online.
+            You're offline — check your internet connection. Chat will resume automatically.
+          </div>
+        )}
+        {chat.connection === "reconnecting" && (
+          <div
+            className="px-3 py-1.5 text-center text-[12.5px] font-bold"
+            style={{
+              background: "color-mix(in srgb, #eab308 14%, transparent)",
+              color: "#a16207",
+            }}
+          >
+            Reconnecting to the chat server…
           </div>
         )}
 
