@@ -102,6 +102,13 @@ The deployment doesn't match this source tree. Redeploy the full folder
 - **Health check**: `https://your-site.vercel.app/api/health` must return
   `{"ok":true,"storage":"postgres",...}`. If it says `"storage":"file"`, the
   Postgres database isn't attached to the project (Vercel -> Storage).
+- **Staff chat voice notes (optional)**: audio clips are stored in Vercel
+  Blob, not the database. To enable them: Vercel -> Storage -> Create
+  Database -> Blob, and connect it to this project (this sets the
+  `BLOB_READ_WRITE_TOKEN` environment variable), then redeploy. Without it
+  everything else works but the mic button stays hidden in Staff Chat.
+  Audio never enters Postgres and is only served through the authenticated
+  chat API — never as a public link.
 - **Printed QR codes are permanent**: the ids `qr_table_1` (Table 1),
   `qr_table_2` (Table 2) and `qr_counter` (Counter) are guaranteed to exist
   server-side -- they are re-added automatically whenever data is seeded or

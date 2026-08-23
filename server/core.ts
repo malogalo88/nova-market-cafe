@@ -13,12 +13,14 @@
  * and the authoritative merged database is returned to the device.
  */
 import crypto from "node:crypto";
+import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DB, QrOrder } from "../src/lib/types.js";
 import { normalizeDB } from "../src/lib/storage.js";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore.js";
 import type { DbStore } from "./store.js";
 import { chooseChatStore, chooseStore, databaseUrl, describeStorage, type ChatMessageRow } from "./store.js";
+import { newMediaId, normalizeVoiceMime, readVoice, saveVoice, VOICE_MAX_BYTES, voiceBackend } from "./voicestore.js";
 
 /**
  * QR codes printed on posters are permanent physical objects -- their ids must
@@ -185,6 +187,29 @@ export function readBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+/** Raw binary body reader for voice uploads — drains oversized bodies
+ *  gracefully so the route can still answer with a proper 413 instead of
+ *  resetting the connection mid-request. */
+function readRawBody(req: IncomingMessage, limitBytes: number): Promise<{ ok: true; data: Buffer } | { ok: false }> {
+  return new Promise((resolve) => {
+    let size = 0;
+    let over = false;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      if (over) return; // keep draining, discard
+      size += c.length;
+      if (size > limitBytes) {
+        over = true;
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => resolve(over ? { ok: false } : { ok: true, data: Buffer.concat(chunks) }));
+    req.on("error", () => resolve({ ok: false }));
+  });
+}
+
 function publicMenu(db: DB) {
   return {
     businessName: db.settings.businessName,
@@ -313,6 +338,9 @@ export function mergeDbs(current: DB, incoming: DB, mode: "merge" | "replace"): 
  * silently breaks every multi-segment API route; literal file names always
  * deploy correctly.
  */
+/** Local data dir for the file-mode voice backend (dev/LAN only). */
+const dataDir = (): string => path.join(process.cwd(), "data");
+
 export async function serveApi(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const host = req.headers.host ?? "localhost";
@@ -674,6 +702,9 @@ export async function handleApiRequest(
           presence,
           unread,
           typing,
+          // Voice notes need object storage (Vercel Blob in production, local
+          // disk in dev). Clients hide the mic button when this is false.
+          voice: voiceBackend() !== "none",
         });
         return;
       }
@@ -688,6 +719,77 @@ export async function handleApiRequest(
         }
         await chatStore().leave(employeeId);
         json(res, 200, { ok: true });
+        return;
+      }
+
+      // ── Voice notes (staff-only, authenticated, membership-checked) ──────
+      // Upload the audio bytes; the message row referencing them is created
+      // separately by POST /api/chat/messages. Bytes go to object storage
+      // (Vercel Blob) or local disk — never into Postgres.
+      if (req.method === "POST" && url.pathname === "/api/chat/voice") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        if (voiceBackend() === "none") {
+          json(res, 501, { ok: false, error: "Voice storage is not configured on this deployment." });
+          return;
+        }
+        const mime = normalizeVoiceMime(req.headers["x-novapos-voice-mime"] as string | undefined);
+        const raw = await readRawBody(req, VOICE_MAX_BYTES);
+        if (!raw.ok) {
+          json(res, 413, { ok: false, error: "Voice note too large." });
+          return;
+        }
+        const data = raw.data;
+        if (data.length < 512) {
+          json(res, 400, { ok: false, error: "Recording is empty." });
+          return;
+        }
+        const mediaId = newMediaId(employeeId);
+        try {
+          await saveVoice(dataDir(), mediaId, data, mime);
+        } catch {
+          json(res, 502, { ok: false, error: "Could not store the recording." });
+          return;
+        }
+        json(res, 200, { ok: true, mediaId, bytes: data.length, mime });
+        return;
+      }
+
+      // Stream a voice note back. Same access rules as chat messages: staff
+      // token required, and for DMs you must be a participant. The blob URL,
+      // when object storage is used, never reaches the client — bytes are
+      // proxied through this authenticated endpoint.
+      if (req.method === "GET" && url.pathname.startsWith("/api/chat/voice/")) {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const mediaId = decodeURIComponent(url.pathname.slice("/api/chat/voice/".length));
+        if (!/^[A-Za-z0-9._:-]+$/.test(mediaId)) {
+          json(res, 400, { ok: false, error: "Invalid media id." });
+          return;
+        }
+        const owner = await chatStore().messageByMediaId(mediaId);
+        if (!owner || !parseChatChannel(owner.channel, employeeId)) {
+          json(res, owner ? 403 : 404, { ok: false, error: owner ? "Not allowed." : "Not found." });
+          return;
+        }
+        const file = await readVoice(dataDir(), mediaId);
+        if (!file) {
+          json(res, 404, { ok: false, error: "Audio missing." });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": file.mime,
+          "Content-Length": file.data.length,
+          "Cache-Control": "private, max-age=86400",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(file.data);
         return;
       }
 
@@ -748,16 +850,50 @@ export async function handleApiRequest(
           json(res, 401, { ok: false, error: "Sign in required." });
           return;
         }
-        const sendBody = (await readBody(req)) as { channel?: unknown; body?: unknown } | null;
+        const sendBody = (await readBody(req)) as {
+          channel?: unknown;
+          body?: unknown;
+          kind?: unknown;
+          mediaId?: unknown;
+          mediaMime?: unknown;
+          durationMs?: unknown;
+          mediaBytes?: unknown;
+        } | null;
         const channel = parseChatChannel(typeof sendBody?.channel === "string" ? sendBody.channel : null, employeeId);
         const rawText = typeof sendBody?.body === "string" ? sendBody.body.trim() : "";
-        // Reject rather than silently truncate: a cut-off message would read
-        // as complete to the recipients.
-        if (!channel || !rawText || rawText.length > 2000) {
-          json(res, 400, { ok: false, error: rawText.length > 2000 ? "Message too long (max 2000 characters)." : "Invalid message." });
+        const isVoice = sendBody?.kind === "voice";
+
+        // Voice messages: metadata only. The media id is bound to its uploader
+        // (`<employeeId>:<random>`), so a client can never attach another
+        // staff member's recording to their own message.
+        let media: Pick<ChatMessageRow, "kind" | "mediaId" | "mediaMime" | "durationMs" | "mediaBytes"> | undefined;
+        if (isVoice) {
+          const mid = typeof sendBody?.mediaId === "string" ? sendBody.mediaId : "";
+          if (!channel || !mid.startsWith(`${employeeId}:`) || !/^[A-Za-z0-9._:-]+$/.test(mid)) {
+            json(res, 400, { ok: false, error: "Invalid voice attachment." });
+            return;
+          }
+          const dur = Math.floor(Number(sendBody?.durationMs));
+          media = {
+            kind: "voice",
+            mediaId: mid,
+            mediaMime: normalizeVoiceMime(typeof sendBody?.mediaMime === "string" ? sendBody.mediaMime : undefined),
+            durationMs: Number.isFinite(dur) ? Math.min(Math.max(dur, 0), 300_000) : undefined,
+            mediaBytes: Math.min(Math.max(Math.floor(Number(sendBody?.mediaBytes)) || 0, 0), VOICE_MAX_BYTES) || undefined,
+          };
+        }
+
+        // Text messages reject rather than silently truncate: a cut-off
+        // message would read as complete to the recipients. Voice rows may
+        // have an empty body (the audio IS the content).
+        if (!channel || (!isVoice && (!rawText || rawText.length > 2000))) {
+          json(res, 400, {
+            ok: false,
+            error: !isVoice && rawText.length > 2000 ? "Message too long (max 2000 characters)." : "Invalid message.",
+          });
           return;
         }
-        const message = await chatStore().insertMessage(channel, employeeId, emp.name, rawText);
+        const message = await chatStore().insertMessage(channel, employeeId, emp.name, rawText, media);
         // Sending implies having read the conversation up to this point.
         await chatStore().setRead(employeeId, channel, message.seq);
         json(res, 200, { ok: true, message });

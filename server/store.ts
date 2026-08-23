@@ -258,6 +258,13 @@ export interface ChatMessageRow {
   senderName: string;
   body: string;
   createdAt: string; // ISO timestamp
+  /** "text" (default) or "voice". Voice rows carry media metadata only —
+   *  audio bytes live in object storage / local disk, never in Postgres. */
+  kind?: "text" | "voice";
+  mediaId?: string;
+  mediaMime?: string;
+  durationMs?: number;
+  mediaBytes?: number;
 }
 
 export interface PresenceRecord {
@@ -288,7 +295,16 @@ export interface ChatStore {
   /** Mark me offline immediately (sign-out) while keeping lastSeen fresh. */
   leave(employeeId: string): Promise<void>;
   presence(): Promise<PresenceRecord[]>;
-  insertMessage(channel: string, senderId: string, senderName: string, body: string): Promise<ChatMessageRow>;
+  /** Media payload descriptor attached to a voice-note message. */
+  insertMessage(
+    channel: string,
+    senderId: string,
+    senderName: string,
+    body: string,
+    media?: Pick<ChatMessageRow, "kind" | "mediaId" | "mediaMime" | "durationMs" | "mediaBytes">
+  ): Promise<ChatMessageRow>;
+  /** Find which channel/sender a voice media id belongs to (playback authz). */
+  messageByMediaId(mediaId: string): Promise<{ channel: string; senderId: string } | null>;
   /** Messages with seq > afterSeq, ascending, capped at limit. */
   messagesAfter(channel: string, afterSeq: number, limit: number): Promise<ChatMessageRow[]>;
   /** Messages with seq < beforeSeq, ascending (the page just before it). */
@@ -314,6 +330,14 @@ const CHAT_SQL = `
     body TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  -- Voice notes: metadata only. Audio bytes live in object storage
+  -- (Vercel Blob) or on local disk in dev -- never in Postgres.
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'text';
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_id TEXT;
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_mime TEXT;
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_bytes INTEGER;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_media ON chat_messages (media_id) WHERE media_id IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_seq ON chat_messages (channel, seq DESC);
   CREATE TABLE IF NOT EXISTS chat_reads (
     employee_id TEXT NOT NULL,
@@ -400,11 +424,28 @@ export class PgChatStore implements ChatStore {
     }));
   }
 
-  async insertMessage(channel: string, senderId: string, senderName: string, body: string): Promise<ChatMessageRow> {
+  async insertMessage(
+    channel: string,
+    senderId: string,
+    senderName: string,
+    body: string,
+    media?: Pick<ChatMessageRow, "kind" | "mediaId" | "mediaMime" | "durationMs" | "mediaBytes">
+  ): Promise<ChatMessageRow> {
     await this.ensureReady();
     const r = await this.pool.query<{ seq: string; created_at: Date }>(
-      `INSERT INTO chat_messages (channel, sender_id, sender_name, body) VALUES ($1, $2, $3, $4) RETURNING seq, created_at`,
-      [channel, senderId, senderName, body]
+      `INSERT INTO chat_messages (channel, sender_id, sender_name, body, kind, media_id, media_mime, duration_ms, media_bytes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq, created_at`,
+      [
+        channel,
+        senderId,
+        senderName,
+        body,
+        media?.kind ?? "text",
+        media?.mediaId ?? null,
+        media?.mediaMime ?? null,
+        media?.durationMs ?? null,
+        media?.mediaBytes ?? null,
+      ]
     );
     return {
       seq: Number(r.rows[0].seq),
@@ -413,16 +454,25 @@ export class PgChatStore implements ChatStore {
       senderName,
       body,
       createdAt: new Date(r.rows[0].created_at).toISOString(),
+      kind: media?.kind ?? "text",
+      ...(media?.mediaId ? { mediaId: media.mediaId, mediaMime: media.mediaMime, durationMs: media.durationMs, mediaBytes: media.mediaBytes } : {}),
     };
+  }
+
+  async messageByMediaId(mediaId: string): Promise<{ channel: string; senderId: string } | null> {
+    await this.ensureReady();
+    const r = await this.pool.query<{ channel: string; sender_id: string }>(
+      `SELECT channel, sender_id FROM chat_messages WHERE media_id = $1 LIMIT 1`,
+      [mediaId]
+    );
+    if (r.rows.length === 0) return null;
+    return { channel: r.rows[0].channel, senderId: r.rows[0].sender_id };
   }
 
   async messagesAfter(channel: string, afterSeq: number, limit: number): Promise<ChatMessageRow[]> {
     await this.ensureReady();
-    const r = await this.pool.query<{
-      seq: string; channel: string; sender_id: string; sender_name: string; body: string; created_at: Date;
-    }>(
-      `SELECT seq, channel, sender_id, sender_name, body, created_at
-       FROM chat_messages WHERE channel = $1 AND seq > $2 ORDER BY seq ASC LIMIT $3`,
+    const r = await this.pool.query<MsgRowShape>(
+      `SELECT ${MSG_COLS} FROM chat_messages WHERE channel = $1 AND seq > $2 ORDER BY seq ASC LIMIT $3`,
       [channel, afterSeq, limit]
     );
     return r.rows.map(mapMsgRow);
@@ -430,22 +480,16 @@ export class PgChatStore implements ChatStore {
 
   async messagesBefore(channel: string, beforeSeq: number, limit: number): Promise<ChatMessageRow[]> {
     await this.ensureReady();
-    const r = await this.pool.query<{
-      seq: string; channel: string; sender_id: string; sender_name: string; body: string; created_at: Date;
-    }>(
-      `SELECT seq, channel, sender_id, sender_name, body, created_at
-       FROM chat_messages WHERE channel = $1 AND seq < $2 ORDER BY seq DESC LIMIT $3`,
+    const r = await this.pool.query<MsgRowShape>(
+      `SELECT ${MSG_COLS} FROM chat_messages WHERE channel = $1 AND seq < $2 ORDER BY seq DESC LIMIT $3`,
       [channel, beforeSeq, limit]
     );
     return r.rows.map(mapMsgRow).reverse();
   }
   async latestMessages(channel: string, limit: number): Promise<{ msgs: ChatMessageRow[]; hasMore: boolean }> {
     await this.ensureReady();
-    const r = await this.pool.query<{
-      seq: string; channel: string; sender_id: string; sender_name: string; body: string; created_at: Date;
-    }>(
-      `SELECT seq, channel, sender_id, sender_name, body, created_at
-       FROM chat_messages WHERE channel = $1 ORDER BY seq DESC LIMIT $2`,
+    const r = await this.pool.query<MsgRowShape>(
+      `SELECT ${MSG_COLS} FROM chat_messages WHERE channel = $1 ORDER BY seq DESC LIMIT $2`,
       [channel, limit + 1]
     );
     const hasMore = r.rows.length > limit;
@@ -509,17 +553,30 @@ export class PgChatStore implements ChatStore {
   }
 }
 
-function mapMsgRow(row: {
+interface MsgRowShape {
   seq: string; channel: string; sender_id: string; sender_name: string; body: string; created_at: Date;
-}): ChatMessageRow {
-  return {
+  kind: string | null; media_id: string | null; media_mime: string | null; duration_ms: number | null; media_bytes: number | null;
+}
+
+const MSG_COLS = "seq, channel, sender_id, sender_name, body, created_at, kind, media_id, media_mime, duration_ms, media_bytes";
+
+function mapMsgRow(row: MsgRowShape): ChatMessageRow {
+  const base: ChatMessageRow = {
     seq: Number(row.seq),
     channel: row.channel,
     senderId: row.sender_id,
     senderName: row.sender_name,
     body: row.body,
     createdAt: new Date(row.created_at).toISOString(),
+    kind: (row.kind as ChatMessageRow["kind"]) ?? "text",
   };
+  if (row.media_id) {
+    base.mediaId = row.media_id;
+    base.mediaMime = row.media_mime ?? "audio/webm";
+    base.durationMs = row.duration_ms ?? undefined;
+    base.mediaBytes = row.media_bytes ?? undefined;
+  }
+  return base;
 }
 
 interface ChatFileShape {
@@ -617,15 +674,36 @@ export class FileChatStore implements ChatStore {
     return s.presence.map((p) => ({ ...p }));
   }
 
-  async insertMessage(channel: string, senderId: string, senderName: string, body: string): Promise<ChatMessageRow> {
+  async insertMessage(
+    channel: string,
+    senderId: string,
+    senderName: string,
+    body: string,
+    media?: Pick<ChatMessageRow, "kind" | "mediaId" | "mediaMime" | "durationMs" | "mediaBytes">
+  ): Promise<ChatMessageRow> {
     let created!: ChatMessageRow;
     await this.write((s) => {
       const seq = s.nextSeq++;
-      created = { seq, channel, senderId, senderName, body, createdAt: new Date().toISOString() };
+      created = {
+        seq,
+        channel,
+        senderId,
+        senderName,
+        body,
+        createdAt: new Date().toISOString(),
+        kind: media?.kind ?? "text",
+        ...(media?.mediaId ? { mediaId: media.mediaId, mediaMime: media.mediaMime, durationMs: media.durationMs, mediaBytes: media.mediaBytes } : {}),
+      };
       s.messages.push(created);
       if (s.messages.length > 5000) s.messages = s.messages.slice(-4000); // dev-mode safety valve
     });
     return created;
+  }
+
+  async messageByMediaId(mediaId: string): Promise<{ channel: string; senderId: string } | null> {
+    const s = await this.readRaw();
+    const hit = s.messages.find((m) => m.mediaId === mediaId);
+    return hit ? { channel: hit.channel, senderId: hit.senderId } : null;
   }
 
   async messagesAfter(channel: string, afterSeq: number, limit: number): Promise<ChatMessageRow[]> {

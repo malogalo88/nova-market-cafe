@@ -34,6 +34,14 @@ export interface ChatMessage {
   senderName: string;
   body: string;
   createdAt: string;
+  /** "text" (default) or "voice". */
+  kind?: "text" | "voice";
+  /** Voice only — opaque id; bytes are fetched via /api/chat/voice/:id with
+   *  the staff token. Never a public URL. */
+  mediaId?: string;
+  mediaMime?: string;
+  durationMs?: number;
+  mediaBytes?: number;
   /** Client-side only: message not confirmed by the server yet. */
   pending?: boolean;
   failed?: boolean;
@@ -54,6 +62,8 @@ interface HeartbeatReply {
   presence: ChatPresenceEntry[];
   unread: Record<string, number>;
   typing: Array<{ employeeId: string; channel: ChatChannel }>;
+  /** Server has usable voice-note storage (Vercel Blob in prod / disk in dev). */
+  voice?: boolean;
 }
 
 export async function chatHeartbeat(activeNow: boolean): Promise<HeartbeatReply> {
@@ -111,14 +121,75 @@ export async function fetchChatMessages(opts: {
   }
 }
 
-export async function sendChatMessage(channel: ChatChannel, body: string): Promise<ChatMessage> {
-  dbg(`send message request channel=${channel} len=${body.length}`);
+export async function sendChatMessage(
+  channel: ChatChannel,
+  body: string,
+  media?: { kind: "voice"; mediaId: string; mediaMime: string; durationMs: number; mediaBytes: number }
+): Promise<ChatMessage> {
+  dbg(
+    media
+      ? `send voice message request channel=${channel} media=${media.mediaId.slice(0, 18)}… dur=${media.durationMs}ms`
+      : `send text message request channel=${channel} len=${body.length}`
+  );
   const t0 = Date.now();
-  const r = await api("/api/chat/messages", { method: "POST", body: JSON.stringify({ channel, body }) }, 15000);
+  const r = await api("/api/chat/messages", {
+    method: "POST",
+    body: JSON.stringify({ channel, body, ...(media ?? {}) }),
+  }, 15000);
   dbg(`send message response HTTP ${r.status} in ${Date.now() - t0}ms`);
   if (!r.ok) throw new Error(`Server responded ${r.status}`);
   const parsed = (await r.json()) as { ok: boolean; message: ChatMessage };
   return parsed.message;
+}
+
+/**
+ * Upload raw recorded audio for a voice note. Bytes travel to object storage
+ * (or local disk in dev) with the staff token; the reply carries only an
+ * opaque media id which is then attached to a chat message. The id is bound
+ * to the authenticated uploader server-side.
+ */
+export async function uploadVoiceNote(blob: Blob, mime: string): Promise<{ mediaId: string }> {
+  dbg(`voice upload request mime=${mime} bytes=${blob.size}`);
+  const t0 = Date.now();
+  const r = await api("/api/chat/voice", {
+    method: "POST",
+    body: blob,
+    headers: {
+      "Content-Type": mime,
+      "x-novapos-voice-mime": mime,
+    },
+  }, 30000);
+  dbg(`voice upload response HTTP ${r.status} in ${Date.now() - t0}ms`);
+  if (!r.ok) {
+    let detail = `Server responded ${r.status}`;
+    try {
+      const j = (await r.json()) as { error?: string };
+      if (j.error) detail = j.error;
+    } catch {
+      /* keep default */
+    }
+    throw new Error(detail);
+  }
+  const parsed = (await r.json()) as { ok: boolean; mediaId: string };
+  return { mediaId: parsed.mediaId };
+}
+
+/** Authenticated fetch of a voice note's bytes as an object URL for <audio>.
+ *  The audio element cannot attach Authorization headers itself, so playback
+ *  always goes through this helper — the raw storage URL never reaches the
+ *  client and the server enforces channel membership per request. */
+const voiceUrlCache = new Map<string, string>();
+export async function fetchVoiceObjectUrl(mediaId: string): Promise<string> {
+  const cached = voiceUrlCache.get(mediaId);
+  if (cached) return cached;
+  const t0 = Date.now();
+  const r = await api(`/api/chat/voice/${encodeURIComponent(mediaId)}`, {}, 15000);
+  if (!r.ok) throw new Error(`Voice unavailable (${r.status})`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  voiceUrlCache.set(mediaId, url);
+  dbg(`voice fetched media=${mediaId.slice(0, 18)}… bytes=${blob.size} in ${Date.now() - t0}ms`);
+  return url;
 }
 
 export async function chatMarkRead(channel: ChatChannel, upToSeq: number): Promise<void> {
@@ -151,6 +222,8 @@ export interface ChatSnapshot {
   unread: Record<string, number>;
   totalUnread: number;
   typing: Array<{ employeeId: string; channel: ChatChannel }>;
+  /** Voice notes are usable on this deployment (server confirmed storage). */
+  voiceReady: boolean;
 }
 
 let snapshot: ChatSnapshot = {
@@ -160,6 +233,7 @@ let snapshot: ChatSnapshot = {
   unread: {},
   totalUnread: 0,
   typing: [],
+  voiceReady: false,
 };
 
 const listeners = new Set<() => void>();
@@ -193,7 +267,7 @@ let networkAttached = false;
 let myIdentity: { id: string; name: string } | null = null;
 
 /** TEMPORARY diagnostics — remove once chat connection stability is confirmed. */
-function dbg(...args: unknown[]): void {
+export function dbg(...args: unknown[]): void {
   console.info("[CHAT][dbg]", ...args);
 }
 
@@ -323,6 +397,9 @@ async function runBeat(): Promise<void> {
       unread: r.unread,
       totalUnread: Object.values(r.unread).reduce((a, b) => a + b, 0),
       typing: r.typing,
+      // Server tells us whether voice storage is configured. Keep the last
+      // known value if an older server doesn't send the flag.
+      voiceReady: r.voice ?? snapshot.voiceReady,
     });
     setConnection("online");
     dbg(`heartbeat ok in ${Date.now() - t0}ms status=${r.myStatus} presence=${r.presence.length} unreadTotal=${Object.values(r.unread).reduce((a, b) => a + b, 0)} typing=${r.typing.length}`);
@@ -380,6 +457,7 @@ export function stopChatPresence(markLeft = true): void {
     unread: {},
     totalUnread: 0,
     typing: [],
+    voiceReady: false,
   });
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessagesSquare, MessageSquare, PanelLeft, RefreshCcw, Search, Send, X } from "lucide-react";
+import { MessagesSquare, MessageSquare, Mic, PanelLeft, Pause, Play, RefreshCcw, Search, Send, Trash2, X } from "lucide-react";
 import { useAppStore } from "../store/useStore";
-import { Badge, EmptyState, IconButton, Spinner } from "../components/ui";
+import { Badge, EmptyState, IconButton, Spinner, toast } from "../components/ui";
 import { ROLE_LABELS } from "../lib/permissions";
 import { fmtDate, fmtTime, relativeTime } from "../lib/format";
 import type { Employee } from "../lib/types";
@@ -10,11 +10,14 @@ import {
   chatMarkRead,
   chatSetTyping,
   dmChannel,
+  dbg,
   fetchChatMessages,
+  fetchVoiceObjectUrl,
   noteStaffSeq,
   sendChatMessage,
   setViewedChatChannel,
   STAFF_CHANNEL,
+  uploadVoiceNote,
   useChatSnapshot,
   type ChatChannel,
   type ChatMessage,
@@ -22,6 +25,106 @@ import {
 } from "../lib/chat";
 
 type PresenceStatus = ChatPresenceEntry["status"];
+
+/** mm:ss from milliseconds. */
+function fmtDur(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Playable voice-note bubble. Bytes are fetched lazily through the
+ * authenticated endpoint (the <audio> element cannot attach an Authorization
+ * header itself), then played from a local object URL.
+ */
+function VoiceBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!msg.mediaId) {
+      setError(true);
+      return;
+    }
+    fetchVoiceObjectUrl(msg.mediaId)
+      .then((u) => {
+        if (alive) setUrl(u);
+      })
+      .catch(() => {
+        if (alive) setError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [msg.mediaId]);
+
+  useEffect(() => {
+    if (!url) return;
+    const a = new Audio(url);
+    audioRef.current = a;
+    const onTime = (): void => setPositionMs(a.currentTime * 1000);
+    const onEnd = (): void => {
+      setPlaying(false);
+      setPositionMs(0);
+    };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("ended", onEnd);
+    return () => {
+      a.pause();
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("ended", onEnd);
+      audioRef.current = null;
+    };
+  }, [url]);
+
+  function toggle(): void {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      void a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    }
+  }
+
+  const total = msg.durationMs && msg.durationMs > 0 ? msg.durationMs : 0;
+  const frac = total > 0 ? Math.min(1, positionMs / total) : positionMs > 0 ? 1 : 0;
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <button
+        onClick={toggle}
+        disabled={!url}
+        aria-label={playing ? "Pause voice note" : "Play voice note"}
+        className="grid size-9 shrink-0 place-items-center rounded-full"
+        style={{
+          background: url && !error ? "var(--accent)" : "var(--border)",
+          color: "#fff",
+          opacity: url ? 1 : 0.6,
+        }}
+      >
+        {!url ? error ? <X size={16} /> : <Spinner className="size-4" /> : playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+      </button>
+      <div
+        className="h-1.5 w-24 overflow-hidden rounded-full sm:w-32"
+        style={{ background: "color-mix(in srgb, currentColor 25%, transparent)" }}
+        role="progressbar"
+        aria-valuenow={Math.round(frac * 100)}
+      >
+        <div className="h-full rounded-full transition-[width]" style={{ width: `${Math.round(frac * 100)}%`, background: "currentColor" }} />
+      </div>
+      <span className="text-[11px] font-bold tabular-nums opacity-80">
+        {total > 0 ? `${fmtDur(positionMs)} / ${fmtDur(total)}` : fmtDur(positionMs)}
+      </span>
+      {error && <span className="text-[11px] font-semibold">unavailable</span>}
+    </div>
+  );
+}
 
 function StatusDot({ status }: { status: PresenceStatus }): React.ReactElement {
   const color = status === "online" ? "var(--success)" : status === "away" ? "#eab308" : "var(--border)";
@@ -88,6 +191,23 @@ export default function StaffChat(): React.ReactElement {
   const typingSentAtRef = useRef(0);
   const caretRef = useRef(0);
 
+  // ── Voice-note recorder state ───────────────────────────────────────────────
+  const [recState, setRecState] = useState<"idle" | "recording" | "sending">("idle");
+  const [recMs, setRecMs] = useState(0);
+  const recRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; mime: string; stream: MediaStream } | null>(null);
+  const recTimerRef = useRef(0);
+  const recCancelRef = useRef(false);
+
+  /** Mic availability: server storage + browser capability. */
+  const micAvailable = useMemo(
+    () =>
+      chat.voiceReady &&
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia &&
+      typeof MediaRecorder !== "undefined",
+    [chat.voiceReady]
+  );
+
   const activeStaff = useMemo(() => db.employees.filter((e) => e.status === "active"), [db.employees]);
   const peers = useMemo(() => activeStaff.filter((e) => e.id !== me?.id), [activeStaff, me?.id]);
 
@@ -125,7 +245,11 @@ export default function StaffChat(): React.ReactElement {
     for (const inc of incoming) {
       if (inc.senderId === me?.id) {
         const twinIdx = out.findIndex(
-          (m) => m.pending !== undefined && m.senderId === inc.senderId && m.body === inc.body
+          (m) =>
+            m.pending !== undefined &&
+            m.senderId === inc.senderId &&
+            m.body === inc.body &&
+            (m.kind ?? "text") === (inc.kind ?? "text")
         );
         if (twinIdx >= 0) {
           out[twinIdx] = { ...inc };
@@ -219,7 +343,11 @@ export default function StaffChat(): React.ReactElement {
     }
   }
 
-  async function pushMessage(text: string, replaceTempSeq?: number): Promise<void> {
+  async function pushMessage(
+    text: string,
+    replaceTempSeq?: number,
+    media?: { kind: "voice"; mediaId: string; mediaMime: string; durationMs: number; mediaBytes: number }
+  ): Promise<void> {
     const optimistic: ChatMessage = {
       seq: replaceTempSeq ?? -Date.now(),
       channel,
@@ -228,13 +356,14 @@ export default function StaffChat(): React.ReactElement {
       body: text,
       createdAt: new Date().toISOString(),
       pending: true,
+      ...(media ? { kind: media.kind, mediaId: media.mediaId, mediaMime: media.mediaMime, durationMs: media.durationMs, mediaBytes: media.mediaBytes } : {}),
     };
     setMsgs((prev) =>
       replaceTempSeq ? prev.map((m) => (m.seq === replaceTempSeq ? optimistic : m)) : [...prev, optimistic]
     );
     nearBottomRef.current = true;
     try {
-      const saved = await sendChatMessage(channel, text);
+      const saved = await sendChatMessage(channel, text, media);
       setMsgs((prev) => prev.map((m) => (m.seq === optimistic.seq ? { ...saved } : m)));
       if (saved.seq > lastSeqRef.current) {
         lastSeqRef.current = saved.seq;
@@ -245,6 +374,141 @@ export default function StaffChat(): React.ReactElement {
       setMsgs((prev) =>
         prev.map((m) => (m.seq === optimistic.seq ? { ...optimistic, pending: false, failed: true } : m))
       );
+    }
+  }
+
+  // ── Voice-note recording ────────────────────────────────────────────────────
+  const lastDurRef = useRef(0);
+
+  function stopRecTimer(): void {
+    window.clearInterval(recTimerRef.current);
+    recTimerRef.current = 0;
+  }
+
+  function teardownRecorder(): void {
+    recRef.current?.stream.getTracks().forEach((t) => t.stop());
+    recRef.current = null;
+    stopRecTimer();
+  }
+
+  async function sendRecording(): Promise<void> {
+    const r = recRef.current;
+    if (!r) return;
+    lastDurRef.current = recMs; // capture elapsed time before state resets
+    recCancelRef.current = false;
+    try {
+      r.rec.stop(); // onstop → finishRecording
+    } catch {
+      teardownRecorder();
+      setRecState("idle");
+    }
+  }
+
+  function cancelRecording(): void {
+    if (!recRef.current) return;
+    recCancelRef.current = true;
+    try {
+      recRef.current.rec.stop();
+    } catch {
+      /* already stopped */
+    }
+    teardownRecorder();
+    setRecState("idle");
+    setRecMs(0);
+  }
+
+  async function startRecording(): Promise<void> {
+    if (!chat.voiceReady) {
+      toast.info("Voice notes aren't configured on this deployment yet.");
+      return;
+    }
+    if (!micAvailable) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mpeg"];
+      const mime = candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks: Blob[] = [];
+      let finalMime = mime || "audio/webm";
+      rec.ondataavailable = (e): void => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      rec.onstop = (): void => {
+        const useMime = rec.mimeType || finalMime;
+        const stream2 = rec.stream;
+        if (recCancelRef.current) {
+          stream2.getTracks().forEach((t) => t.stop());
+          setRecState("idle");
+          setRecMs(0);
+          return;
+        }
+        finishRecording(chunks, useMime, stream2, lastDurRef.current);
+      };
+      rec.start();
+      recRef.current = { rec, chunks, mime: finalMime, stream };
+      recCancelRef.current = false;
+      setRecMs(0);
+      setRecState("recording");
+      stopRecTimer();
+      recTimerRef.current = window.setInterval(() => setRecMs((ms) => ms + 200), 200);
+    } catch {
+      toast.error("Microphone unavailable — check browser permission.");
+    }
+  }
+
+  // Hard cap: auto-stop (and send) at 2 minutes.
+  useEffect(() => {
+    if (recState !== "recording" || recMs < 120_000) return;
+    lastDurRef.current = 120_000;
+    recCancelRef.current = false;
+    try {
+      recRef.current?.rec.stop();
+    } catch {
+      /* noop */
+    }
+  }, [recMs, recState]);
+
+  // Never leave the mic hot if the page unmounts mid-recording.
+  useEffect(
+    () => () => {
+      if (recRef.current) {
+        recCancelRef.current = true;
+        try {
+          recRef.current.rec.stop();
+        } catch {
+          /* noop */
+        }
+        teardownRecorder();
+      }
+    },
+    []
+  );
+
+  async function finishRecording(chunks: Blob[], mime: string, stream: MediaStream, durationMs: number): Promise<void> {
+    teardownRecorder();
+    setRecState("sending");
+    setRecMs(0);
+    try {
+      const blob = new Blob(chunks, { type: mime });
+      if (!blob.size || blob.size < 512) {
+        toast.error("Recording was empty.");
+        setRecState("idle");
+        return;
+      }
+      dbg(`voice recorded mime=${mime} bytes=${blob.size} dur=${durationMs}ms`);
+      const { mediaId } = await uploadVoiceNote(blob, mime);
+      await pushMessage("", undefined, {
+        kind: "voice",
+        mediaId,
+        mediaMime: mime,
+        durationMs: Math.max(durationMs, 1000),
+        mediaBytes: blob.size,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send the voice note.");
+    } finally {
+      stream.getTracks().forEach((t) => t.stop());
+      setRecState("idle");
     }
   }
 
@@ -533,6 +797,11 @@ export default function StaffChat(): React.ReactElement {
               const prev = shown[i - 1];
               const newDay = !prev || fmtDate(prev.createdAt) !== fmtDate(m.createdAt);
               const mine = m.senderId === me.id;
+              // A new "group" starts when the sender changes (or across a day
+              // divider). The name shows on every group start — including my
+              // own messages ("Me") so voice/text groups are always labelled.
+              const groupStart = newDay || !prev || prev.senderId !== m.senderId;
+              const isVoice = m.kind === "voice";
               return (
                 <div key={m.seq}>
                   {newDay && (
@@ -541,8 +810,8 @@ export default function StaffChat(): React.ReactElement {
                     </div>
                   )}
                   <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                    {!mine && (!prev || prev.senderId !== m.senderId) && (
-                      <span className="px-1 pb-0.5 text-[11.5px] font-bold text-muted">{m.senderName}</span>
+                    {groupStart && (
+                      <span className="px-1 pb-0.5 text-[11.5px] font-bold text-muted">{mine ? "Me" : m.senderName}</span>
                     )}
                     <div
                       className={`max-w-[78%] rounded-2xl px-3 py-2 text-[13.5px] leading-snug ${mine ? "rounded-br-md" : "rounded-bl-md"}`}
@@ -554,20 +823,45 @@ export default function StaffChat(): React.ReactElement {
                             : { background: "var(--surface-2)" }
                       }
                     >
-                      {renderBody(m.body, activeStaff)}
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] font-semibold opacity-70">
-                        <span>{fmtTime(m.createdAt)}</span>
-                        {mine &&
-                          (m.failed ? (
-                            <button className="font-bold underline underline-offset-2" onClick={() => void pushMessage(m.body, m.seq)}>
-                              Not sent · Retry
-                            </button>
-                          ) : m.pending ? (
-                            <span>Sending…</span>
-                          ) : othersReadUpTo >= m.seq ? (
-                            <span>Seen</span>
-                          ) : null)}
-                      </div>
+                      {isVoice && m.mediaId ? (
+                        <VoiceBubble msg={m} />
+                      ) : (
+                        <>
+                          {renderBody(m.body, activeStaff)}
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] font-semibold opacity-70">
+                            <span>{fmtTime(m.createdAt)}</span>
+                            {mine &&
+                              (m.failed ? (
+                                <button
+                                  className="font-bold underline underline-offset-2"
+                                  onClick={() =>
+                                    void pushMessage(
+                                      m.body,
+                                      m.seq,
+                                      // Voice notes must retry WITH their media,
+                                      // otherwise the server sees an empty text.
+                                      m.kind === "voice" && m.mediaId
+                                        ? {
+                                            kind: "voice",
+                                            mediaId: m.mediaId,
+                                            mediaMime: m.mediaMime ?? "audio/webm",
+                                            durationMs: m.durationMs ?? 1000,
+                                            mediaBytes: m.mediaBytes ?? 0,
+                                          }
+                                        : undefined
+                                    )
+                                  }
+                                >
+                                  Not sent · Retry
+                                </button>
+                              ) : m.pending ? (
+                                <span>Sending…</span>
+                              ) : othersReadUpTo >= m.seq ? (
+                                <span>Seen</span>
+                              ) : null)}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -602,31 +896,80 @@ export default function StaffChat(): React.ReactElement {
           </div>
         )}
 
-        {/* Composer */}
-        <form
-          className="flex items-end gap-2 border-t px-3 py-2.5"
-          style={{ borderColor: "var(--border)" }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <textarea
-            ref={taRef}
-            value={draft}
-            onChange={(e) => onDraftChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-            onKeyDown={onKeyDown}
-            onBlur={() => setMention(null)}
-            rows={Math.min(4, Math.max(1, draft.split("\n").length))}
-            placeholder={peer ? `Message ${peer.name}…` : "Message the team…"}
-            className="max-h-32 min-h-[38px] flex-1 resize-none rounded-xl border px-3 py-2 text-[13.5px] leading-snug outline-none focus:border-accent"
-            style={{ borderColor: "var(--border)", background: "transparent" }}
-            aria-label="Message"
-          />
-          <button type="submit" className="btn btn-primary btn-sm !gap-1.5 self-end" disabled={!draft.trim()}>
-            <Send size={15} /> Send
-          </button>
-        </form>
+        {/* Composer — swaps to a recording bar while the mic is live */}
+        {recState === "recording" ? (
+          <div
+            className="flex items-center gap-2 border-t px-3 py-2.5"
+            style={{ borderColor: "var(--border)" }}
+            role="group"
+            aria-label="Recording voice note"
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2" style={{ background: "color-mix(in srgb, var(--danger) 10%, transparent)" }}>
+              <span
+                className="size-2.5 shrink-0 animate-pulse rounded-full"
+                style={{ background: "var(--danger)" }}
+                aria-hidden
+              />
+              <span className="text-[13.5px] font-bold tabular-nums" style={{ color: "var(--danger)" }}>
+                Recording {fmtDur(recMs)} · max 2:00
+              </span>
+            </span>
+            <IconButton
+              label="Cancel recording"
+              onClick={cancelRecording}
+              className="size-10"
+              style={{ color: "var(--danger)" }}
+            >
+              <Trash2 size={17} />
+            </IconButton>
+            <button
+              type="button"
+              onClick={() => void sendRecording()}
+              className="btn btn-primary btn-sm !min-h-[40px] !gap-1.5"
+              disabled={recMs < 600}
+              title={recMs < 600 ? "Hold on a moment…" : "Stop and send"}
+            >
+              <Send size={15} /> Send
+            </button>
+          </div>
+        ) : (
+          <form
+            className="flex items-end gap-2 border-t px-3 py-2.5"
+            style={{ borderColor: "var(--border)" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            {micAvailable && (
+              <button
+                type="button"
+                onClick={() => void startRecording()}
+                className="btn btn-secondary btn-sm !min-h-[40px] shrink-0 !px-2.5"
+                title="Record a voice note (up to 2 minutes)"
+                aria-label="Record voice note"
+                disabled={recState === "sending"}
+              >
+                {recState === "sending" ? <Spinner className="size-[15px]" /> : <Mic size={16} />}
+              </button>
+            )}
+            <textarea
+              ref={taRef}
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+              onKeyDown={onKeyDown}
+              onBlur={() => setMention(null)}
+              rows={Math.min(4, Math.max(1, draft.split("\n").length))}
+              placeholder={peer ? `Message ${peer.name}…` : "Message the team…"}
+              className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-xl border px-3 py-2 text-[13.5px] leading-snug outline-none focus:border-accent"
+              style={{ borderColor: "var(--border)", background: "transparent" }}
+              aria-label="Message"
+            />
+            <button type="submit" className="btn btn-primary btn-sm !min-h-[40px] !gap-1.5 self-end" disabled={!draft.trim()}>
+              <Send size={15} /> Send
+            </button>
+          </form>
+        )}
       </section>
     </div>
   );

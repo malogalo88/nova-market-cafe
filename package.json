@@ -12,6 +12,7 @@
     "typecheck:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "jsbarcode": "^3.11.6",
     "lucide-react": "^0.469.0",
     "pg": "^8.13.1",
