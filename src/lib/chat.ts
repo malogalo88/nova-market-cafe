@@ -183,7 +183,9 @@ export async function fetchVoiceObjectUrl(mediaId: string): Promise<string> {
   const cached = voiceUrlCache.get(mediaId);
   if (cached) return cached;
   const t0 = Date.now();
-  const r = await api(`/api/chat/voice/${encodeURIComponent(mediaId)}`, {}, 15000);
+  // Query-param form: static serverless route files can't match subpaths, so
+  // /api/chat/voice/<id> would never reach the function on some deployments.
+  const r = await api(`/api/chat/voice?id=${encodeURIComponent(mediaId)}`, {}, 15000);
   if (!r.ok) throw new Error(`Voice unavailable (${r.status})`);
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);

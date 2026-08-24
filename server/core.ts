@@ -762,14 +762,20 @@ export async function handleApiRequest(
       // token required, and for DMs you must be a participant. The blob URL,
       // when object storage is used, never reaches the client — bytes are
       // proxied through this authenticated endpoint.
-      if (req.method === "GET" && url.pathname.startsWith("/api/chat/voice/")) {
+      // Accepts both /api/chat/voice?id=… (deployment-friendly; static API
+      // routes can't match subpaths) and the legacy /api/chat/voice/<id>.
+      if (req.method === "GET" && (url.pathname === "/api/chat/voice" || url.pathname.startsWith("/api/chat/voice/"))) {
         const employeeId = await tokenEmployeeId(req);
         if (!employeeId) {
           json(res, 401, { ok: false, error: "Sign in required." });
           return;
         }
-        const mediaId = decodeURIComponent(url.pathname.slice("/api/chat/voice/".length));
-        if (!/^[A-Za-z0-9._:-]+$/.test(mediaId)) {
+        const qpMediaId = url.searchParams.get("id");
+        const pathMediaId = url.pathname.startsWith("/api/chat/voice/")
+          ? decodeURIComponent(url.pathname.slice("/api/chat/voice/".length))
+          : "";
+        const mediaId = qpMediaId ?? pathMediaId;
+        if (!mediaId || !/^[A-Za-z0-9._:-]+$/.test(mediaId)) {
           json(res, 400, { ok: false, error: "Invalid media id." });
           return;
         }
