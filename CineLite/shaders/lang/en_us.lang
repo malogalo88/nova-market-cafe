@@ -1,0 +1,58 @@
+screen.CINE_LITE=CineLite Settings
+
+option.FAKE_RAY_TRACING=Fake Ray Tracing
+option.FAKE_RAY_TRACING.comment=Faked ray-traced lighting: analytic bounce fill, coloured neighbour bounce light and indirect glow. Contains zero real ray tracing.
+value.FAKE_RAY_TRACING.0=OFF
+value.FAKE_RAY_TRACING.1=LOW
+value.FAKE_RAY_TRACING.2=MEDIUM
+value.FAKE_RAY_TRACING.3=HIGH
+
+option.SHADOW_QUALITY=Soft Shadows
+option.SHADOW_QUALITY.comment=Softness of fake sunlight shading (wrapped diffuse). No real shadow map is ever rendered.
+value.SHADOW_QUALITY.0=LOW
+value.SHADOW_QUALITY.1=MEDIUM
+value.SHADOW_QUALITY.2=HIGH
+
+option.WATER_QUALITY=Water Quality
+option.WATER_QUALITY.comment=Wave normals, shoreline foam and underwater distortion.
+value.WATER_QUALITY.0=LOW
+value.WATER_QUALITY.1=MEDIUM
+value.WATER_QUALITY.2=HIGH
+
+option.REFLECTIONS=Reflections
+option.REFLECTIONS.comment=Faked water reflections: analytic sky plus a tiny screen-space ray walk.
+value.REFLECTIONS.0=OFF
+value.REFLECTIONS.1=SKY ONLY
+value.REFLECTIONS.2=MEDIUM
+value.REFLECTIONS.3=HIGH
+
+option.BLOOM=Bloom
+option.BLOOM.comment=Subtle glow around bright pixels (sun, torches, lava, sky).
+value.BLOOM.0=OFF
+value.BLOOM.1=SUBTLE
+value.BLOOM.2=BRIGHT
+
+option.CONTACT_SHADOWS=Contact Shadows
+option.CONTACT_SHADOWS.comment=Short-range darkening where objects meet ground and walls. Adds depth for very little cost.
+value.CONTACT_SHADOWS.0=OFF
+value.CONTACT_SHADOWS.1=MEDIUM
+value.CONTACT_SHADOWS.2=HIGH
+
+option.WIND=Wind
+option.WIND.comment=Gentle movement for grass, crops and leaves.
+value.WIND.0=OFF
+value.WIND.1=LOW
+value.WIND.2=HIGH
+
+option.FOG_QUALITY=Fog Quality
+option.FOG_QUALITY.comment=Atmospheric distance fog with subtle sunlight scattering.
+value.FOG_QUALITY.0=LOW
+value.FOG_QUALITY.1=MEDIUM
+value.FOG_QUALITY.2=HIGH
+
+option.COLOR_GRADING=Cinematic Color Grading
+option.COLOR_GRADING.comment=Gentle contrast curve, saturation and teal/orange split-toning.
+
+profile.LOW=LOW (max FPS)
+profile.MEDIUM=MEDIUM (recommended)
+profile.HIGH=HIGH (best visuals)

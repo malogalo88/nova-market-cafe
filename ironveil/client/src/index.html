@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>IRONVEIL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23141a20'/%3E%3Cpath d='M8 6h16v4l-6 4v12h-4V14L8 10z' fill='%23ffb02e'/%3E%3C/svg%3E">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="scopeoverlay" class="hidden"><div class="scope-circle"></div></div>
+  <div id="blindoverlay"></div>
+  <div id="dmgflash"></div>
+  <div id="crosshair-wrap">
+    <canvas id="xhair" width="64" height="64"></canvas>
+    <div id="hitmarker"></div>
+  </div>
+  <div id="topbar">
+    <div id="scoreA" class="scorechip amber">0</div>
+    <div id="roundtimer">1:35</div>
+    <div id="scoreB" class="scorechip cobalt">0</div>
+  </div>
+  <div id="phasebanner"></div>
+  <div id="killfeed"></div>
+  <div id="teaminfo"></div>
+  <div id="bottomleft">
+    <div id="hpbarwrap"><div id="hpbar"></div></div>
+    <div id="hpnum">100</div>
+    <div id="armorrow"><span id="armoricon">&#9635;</span><span id="armornum">0</span></div>
+  </div>
+  <div id="bottomright">
+    <div id="weaponname">AR-77 LONGHORN</div>
+    <div id="ammonum"><span id="ammomag">25</span><span id="ammoresev">/ 75</span></div>
+  </div>
+  <div id="abilities">
+    <div class="ab" id="ab-q"><span class="ab-key">Q</span><span class="ab-name">—</span><div class="ab-cd"></div></div>
+    <div class="ab" id="ab-e"><span class="ab-key">E</span><span class="ab-name">—</span><div class="ab-cd"></div></div>
+  </div>
+  <div id="pingfps"></div>
+  <div id="damageindicators"></div>
+  <div id="chatlog"></div>
+  <input id="chatinput" class="hidden" maxlength="90" autocomplete="off" />
+  <div id="respawnmsg" class="hidden"></div>
+</div>
+
+<div id="scoreboard" class="hidden">
+  <h2 id="sb-map">FOUNDRY — ELIMINATION</h2>
+  <table id="sb-table"></table>
+  <p class="sb-hint">hold TAB &middot; ESC to pause</p>
+</div>
+
+<div id="menu-root">
+  <div id="mainmenu" class="panel">
+    <div class="logo">IRON<span>VEIL</span></div>
+    <div class="tagline">tactical operations // original build</div>
+    <button id="btn-play" class="big-btn">DEPLOY</button>
+    <button id="btn-settings" class="mid-btn">SETTINGS</button>
+    <div class="menu-foot">prototype build 0.1 — all assets original</div>
+  </div>
+
+  <div id="playpanel" class="panel hidden">
+    <button class="back-btn" data-back>&larr; BACK</button>
+    <h2>MATCH SETUP</h2>
+    <label>Callsign<input id="inp-name" maxlength="16" spellcheck="false"></label>
+    <label>Mode<select id="sel-mode"><option value="0">Elimination (rounds)</option><option value="1" selected>Deathmatch (respawn)</option></select></label>
+    <label>Bots<input id="inp-bots" type="number" min="1" max="9" value="5"></label>
+    <label>Bot skill<select id="sel-diff"><option value="0">Recruit</option><option value="1" selected>Regular</option><option value="2">Veteran</option></select></label>
+    <label>Server address<input id="inp-addr" value="" spellcheck="false"></label>
+    <button id="btn-connect" class="big-btn">CONNECT</button>
+  </div>
+
+  <div id="settingspanel" class="panel hidden">
+    <button class="back-btn" data-back>&larr; BACK</button>
+    <h2>SETTINGS</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="video">VIDEO</button>
+      <button class="tab" data-tab="controls">CONTROLS</button>
+      <button class="tab" data-tab="crosshair">CROSSHAIR</button>
+      <button class="tab" data-tab="audio">AUDIO</button>
+    </div>
+    <div id="tab-video" class="tabpage"></div>
+    <div id="tab-controls" class="tabpage hidden"></div>
+    <div id="tab-crosshair" class="tabpage hidden"></div>
+    <div id="tab-audio" class="tabpage hidden"></div>
+  </div>
+
+  <div id="loadingpanel" class="panel hidden">
+    <div class="logo small">IRON<span>VEIL</span></div>
+    <div id="loadmapname">FOUNDRY</div>
+    <div class="progressbar"><div id="loadbar"></div></div>
+    <div id="loadtip">generating world geometry...</div>
+  </div>
+
+  <div id="loadoutpanel" class="panel hidden">
+    <h2>SELECT LOADOUT <span id="lo-countdown"></span></h2>
+    <div class="lo-section" id="lo-weapons"></div>
+    <div class="lo-section" id="lo-agents"></div>
+    <div class="lo-hint">click to equip &middot; closes when round starts</div>
+  </div>
+
+  <div id="pausemenu" class="panel hidden">
+    <h2>PAUSED</h2>
+    <button id="btn-resume" class="big-btn">RESUME</button>
+    <button id="btn-pause-settings" class="mid-btn">SETTINGS</button>
+    <button id="btn-leave" class="mid-btn danger">LEAVE MATCH</button>
+  </div>
+
+  <div id="endscreen" class="panel hidden">
+    <h2 id="end-title">VICTORY</h2>
+    <div id="end-score"></div>
+    <button id="btn-end-menu" class="big-btn">RETURN TO MENU</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
