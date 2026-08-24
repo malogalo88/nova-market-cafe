@@ -73,7 +73,7 @@ export async function saveVoice(dataDir: string, mediaId: string, data: Buffer, 
   // blob
   const { put } = await import("@vercel/blob");
   await put(`chat-voice/${safeName(mediaId)}.bin`, data, {
-    access: "public",
+    access: "private",
     contentType: mime,
     addRandomSuffix: false,
     allowOverwrite: false,
@@ -102,17 +102,17 @@ export async function readVoice(dataDir: string, mediaId: string): Promise<{ dat
     }
   }
   if (backend === "none") return null;
-  // blob: fetch server-side through the SDK download URL. We list by prefix to
-  // resolve the exact blob URL deterministically (no public exposure).
+  // blob: read through the SDK's authenticated access. Private-store bytes
+  // are fetched server-side only — no URL ever reaches the client.
   try {
-    const { head } = await import("@vercel/blob");
-    const url = `chat-voice/${safeName(mediaId)}.bin`;
-    const info = await head(url);
-    if (!info) return null;
-    const res = await fetch(info.url);
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    return { data: buf, mime: res.headers.get("content-type") ?? info.contentType ?? "audio/webm" };
+    const { get } = await import("@vercel/blob");
+    const res = await get(`chat-voice/${safeName(mediaId)}.bin`, { access: "private" });
+    if (!res || !res.stream) return null;
+    const chunks: Uint8Array[] = [];
+    // Node's ReadableStream is async-iterable at runtime; the server tsconfig
+    // just lacks the lib that types it.
+    for await (const chunk of res.stream as unknown as AsyncIterable<Uint8Array>) chunks.push(chunk);
+    return { data: Buffer.concat(chunks), mime: res.blob?.contentType ?? "audio/webm" };
   } catch {
     return null;
   }
