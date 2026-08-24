@@ -750,8 +750,12 @@ export async function handleApiRequest(
         const mediaId = newMediaId(employeeId);
         try {
           await saveVoice(dataDir(), mediaId, data, mime);
-        } catch {
-          json(res, 502, { ok: false, error: "Could not store the recording." });
+        } catch (err) {
+          // Surface the real cause: staff-authenticated endpoint, and without
+          // this the 502 is undiagnosable from production.
+          console.error("[VOICE] save failed:", err);
+          const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          json(res, 502, { ok: false, error: "Could not store the recording.", detail });
           return;
         }
         json(res, 200, { ok: true, mediaId, bytes: data.length, mime });

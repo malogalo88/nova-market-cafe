@@ -163,8 +163,9 @@ export async function uploadVoiceNote(blob: Blob, mime: string): Promise<{ media
   if (!r.ok) {
     let detail = `Server responded ${r.status}`;
     try {
-      const j = (await r.json()) as { error?: string };
-      if (j.error) detail = j.error;
+      const j = (await r.json()) as { error?: string; detail?: string };
+      if (j.detail) detail = `${j.error ?? "Upload failed"} (${j.detail})`;
+      else if (j.error) detail = j.error;
     } catch {
       /* keep default */
     }
