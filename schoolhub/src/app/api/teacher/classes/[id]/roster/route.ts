@@ -27,7 +27,7 @@ export const GET = authedRoute<{ id: string }>(async ({ actor, params, req }) =>
       admissionNumber: true,
       user: { select: { firstName: true, lastName: true } },
     },
-    orderBy: { user: { firstName: "asc" } },
+    orderBy: { admissionNumber: "asc" }, // fixed register order
   });
 
   const marks = await db.attendanceRecord.findMany({

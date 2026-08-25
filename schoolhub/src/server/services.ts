@@ -349,7 +349,7 @@ export async function getClassDetail(actor: Actor, classId: string) {
     db.student.findMany({
       where: { currentClassId: classId },
       select: { id: true, admissionNumber: true, user: { select: { firstName: true, lastName: true } } },
-      orderBy: { user: { firstName: "asc" } },
+      orderBy: { admissionNumber: "asc" }, // fixed register order
     }),
     db.attendanceRecord.findMany({
       where: { classId },

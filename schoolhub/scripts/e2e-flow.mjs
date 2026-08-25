@@ -56,13 +56,13 @@ async function main() {
 
   const classes = await t("/api/teacher/classes");
   const g6a = (classes.body.classes ?? []).find((c) => c.name === "Grade 6A");
-  check("teacher sees only assigned classes", classes.body.classes.length === 1 && g6a?.students === 2);
+  check("teacher sees only assigned classes", classes.body.classes.length === 1 && classes.body.classes.every((c) => c.name === "Grade 6A"));
 
   const rosterRes = await t(`/api/teacher/classes/${g6a.id}/roster`);
   const roster = rosterRes.body.roster ?? [];
-  // Suite must be re-runnable on the same day, so don't assume a fresh date:
-  // just require the full enrollment with valid statuses.
-  check("roster lists enrolled students", roster.length === 2 && roster.every((r) => r.status === null || ["PRESENT", "ABSENT", "LATE", "EXCUSED"].includes(r.status)));
+  // Suite must be re-runnable on the same day, so don't assume a fresh date
+  // or an exact class size — just require the register shape to be valid.
+  check("roster lists enrolled students", roster.length >= 2 && roster.every((r) => r.status === null || ["PRESENT", "ABSENT", "LATE", "EXCUSED"].includes(r.status)));
   const byName = Object.fromEntries(roster.map((r) => [r.name, r.studentId]));
   const aliceId = byName["Alice Johnson"];
   const jamesId = byName["James Lee"];
@@ -166,7 +166,7 @@ async function main() {
 
   const detailT = await t1c(`/api/classes/${g6a.id}`);
   check("class detail includes roster+pct and canTake for owner",
-    detailT.body.canTake === true && detailT.body.roster.length === 2 &&
+    detailT.body.canTake === true && detailT.body.roster.length >= 2 &&
     detailT.body.roster.every((r) => typeof r.pct === "number"));
   const detailCross = await clsCosta(`/api/classes/${g6a.id}`);
   check("cross-teacher class detail blocked", detailCross.status === 403);
@@ -231,6 +231,67 @@ async function main() {
     auditPage.status === 200 && actions.includes("AUTH_LOGIN") && actions.includes("ATTENDANCE_SAVE"));
   const auditAsTeacher = await t1c("/api/admin/audit");
   check("audit is ADMIN-only", auditAsTeacher.status === 403);
+
+  // ── Add Student (ADMIN-only register feature) ─────────────────────────────
+  const stamp = Date.now().toString(36);
+  const newEmail = `kai.${stamp}@schoolhub.test`;
+  const createAsTeacher = await t1c("/api/students", {
+    method: "POST",
+    body: { firstName: "Kai", lastName: "Grant", email: newEmail, classId: g6a.id },
+  });
+  check("teacher CANNOT create students", createAsTeacher.status === 403);
+
+  const anonCreate = await client()("/api/students", {
+    method: "POST",
+    body: { firstName: "Kai", lastName: "Grant", email: `x${stamp}@t.test`, classId: g6a.id },
+  });
+  check("unauthenticated cannot create students", anonCreate.status === 401);
+
+  const missing = await adminC("/api/students", { method: "POST", body: { firstName: "Kai" } });
+  check("missing fields rejected", missing.status === 400);
+
+  const created = await adminC("/api/students", {
+    method: "POST",
+    body: { firstName: "Kai", lastName: "Grant", email: newEmail, classId: g6a.id },
+  });
+  check(
+    "admin creates student + gets temp password",
+    created.status === 200 && created.body.ok === true &&
+    typeof created.body.temporaryPassword === "string" &&
+    /^S\d{4}$/.test(created.body.student.admissionNumber),
+    JSON.stringify(created.body).slice(0, 140)
+  );
+
+  const dupEmail = await adminC("/api/students", {
+    method: "POST",
+    body: { firstName: "Kai", lastName: "Again", email: newEmail, classId: g6a.id },
+  });
+  check("duplicate email rejected 409", dupEmail.status === 409);
+
+  // New student appears in the class roster immediately
+  const rosterAfter = await t1c(`/api/teacher/classes/${g6a.id}/roster`);
+  const kaiRow = (rosterAfter.body.roster ?? []).find((r) => r.name.startsWith("Kai"));
+  check("new student appears in teacher's register roster", !!kaiRow);
+
+  // …and can be included in attendance
+  const others = (rosterAfter.body.roster ?? []).filter((r) => r.studentId !== kaiRow?.studentId);
+  const markNew = kaiRow
+    ? await t1c(`/api/teacher/classes/${g6a.id}/attendance`, {
+        method: "POST",
+        body: {
+          date: new Date().toLocaleDateString("en-CA"),
+          records: [
+            ...others.map((r) => ({ studentId: r.studentId, status: "PRESENT" })),
+            { studentId: kaiRow.studentId, status: "LATE" },
+          ],
+        },
+      })
+    : { status: 500 };
+  check("new student can be marked in the register", markNew.status === 200);
+
+  // Appears in the searchable list too
+  const searchNew = await adminC(`/api/students?q=${encodeURIComponent("Kai")}`);
+  check("new student appears in students list", (searchNew.body.students ?? []).some((s) => s.name.startsWith("Kai")));
 
   console.log(`\nRESULT pass=${pass} fail=${fail}`);
   process.exit(fail ? 1 : 0);

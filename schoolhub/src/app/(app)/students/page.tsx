@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { Avatar, EmptyState, SkeletonCard } from "@/components/ui";
-import { STATUS_LABELS } from "@/lib/format";
+import { AddStudentDialog } from "@/components/add-student-dialog";
 
 interface StudentRow {
   studentId: string; name: string; email: string; admissionNumber: string;
@@ -15,22 +15,41 @@ export default function StudentsPage() {
   const [q, setQ] = useState("");
   const [students, setStudents] = useState<StudentRow[] | null>(null);
   const [error, setError] = useState("");
+  const [role, setRole] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      api<{ students: StudentRow[] }>(`/api/students?q=${encodeURIComponent(q.trim())}`)
-        .then((d) => setStudents(d.students))
-        .catch((e: Error) => setError(e.message));
-    }, q ? 220 : 0);
+    api<{ user: { role: string } | null }>("/api/auth/me")
+      .then((d) => setRole(d.user?.role ?? null))
+      .catch(() => {});
+  }, []);
+
+  const load = (query: string) => {
+    api<{ students: StudentRow[] }>(`/api/students?q=${encodeURIComponent(query.trim())}`)
+      .then((d) => setStudents(d.students))
+      .catch((e: Error) => setError(e.message));
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => load(q), q ? 220 : 0);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
   if (error) return <div className="error-msg">{error}</div>;
 
   return (
     <>
-      <h1>Students</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ marginRight: "auto", marginBottom: 0 }}>Students</h1>
+        {role === "ADMIN" && (
+          <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            + Add student
+          </button>
+        )}
+      </div>
       <p className="sub">Only students you are authorized to see are listed.</p>
+
       <input
         type="text"
         placeholder="Search by name, email or admission number…"
@@ -39,10 +58,11 @@ export default function StudentsPage() {
         style={{ maxWidth: 380, marginBottom: 16 }}
         aria-label="Search students"
       />
+
       {!students ? (
         <SkeletonCard rows={6} />
       ) : students.length === 0 ? (
-        <div className="card"><EmptyState title="No students found" hint="Try a different search." /></div>
+        <div className="card"><EmptyState title="No students found" hint={role === "ADMIN" ? "Use “+ Add student” to create one." : "Try a different search."} /></div>
       ) : (
         <div className="card table-scroll">
           <table>
@@ -61,7 +81,7 @@ export default function StudentsPage() {
                   <td>{s.className ?? "—"}</td>
                   <td>
                     <span className={`pill ${s.pct >= 85 ? "PRESENT" : s.pct >= 70 ? "LATE" : "ABSENT"}`}>
-                      {s.pct}% · {STATUS_LABELS.PRESENT}
+                      {s.pct}%
                     </span>
                   </td>
                 </tr>
@@ -70,6 +90,8 @@ export default function StudentsPage() {
           </table>
         </div>
       )}
+
+      <AddStudentDialog open={addOpen} onClose={() => setAddOpen(false)} onCreated={() => load(q)} />
     </>
   );
 }

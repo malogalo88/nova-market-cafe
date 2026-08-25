@@ -131,25 +131,32 @@ export function AttendanceSheet({ classId, onSaved }: { classId: string; onSaved
         ) : visible.length === 0 ? (
           <p className="sub">No students match.</p>
         ) : (
-          visible.map((r) => (
-            <div key={r.studentId} className={`att-row ${marks[r.studentId] ? "" : "unmarked"}`}>
-              <span className="name">{r.name}</span>
-              <div className="seg" role="group" aria-label={`Mark ${r.name}`}>
-                {STATUSES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    data-status={s}
-                    className={marks[r.studentId] === s ? "on" : ""}
-                    aria-pressed={marks[r.studentId] === s}
-                    onClick={() => setMarks((prev) => ({ ...prev, [r.studentId]: s }))}
-                  >
-                    {LABELS[s]}
-                  </button>
-                ))}
+          visible.map((r) => {
+            const idx = roster!.findIndex((x) => x.studentId === r.studentId) + 1;
+            return (
+              <div key={r.studentId} className={`att-row ${marks[r.studentId] ? "" : "unmarked"}`}>
+                <span className="reg-no" aria-hidden>{idx}</span>
+                <span className="name">
+                  {r.name}
+                  <span className="count" style={{ marginLeft: 8 }}>{r.admissionNumber}</span>
+                </span>
+                <div className="seg" role="group" aria-label={`Mark ${r.name}`}>
+                  {STATUSES.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      data-status={s}
+                      className={marks[r.studentId] === s ? "on" : ""}
+                      aria-pressed={marks[r.studentId] === s}
+                      onClick={() => setMarks((prev) => ({ ...prev, [r.studentId]: s }))}
+                    >
+                      {LABELS[s]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div className="savebar">
           <span className="unmarked-chip">{unmarked > 0 ? `${unmarked} not marked` : `All ${roster?.length ?? 0} marked`}</span>

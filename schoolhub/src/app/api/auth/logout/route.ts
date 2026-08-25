@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/constants";
-import { destroySession, sessionCookieOptions } from "@/server/session";
+import { sessionCookieOptions } from "@/server/session";
 import { jsonOk, route } from "@/server/api";
 import { db } from "@/lib/db";
 

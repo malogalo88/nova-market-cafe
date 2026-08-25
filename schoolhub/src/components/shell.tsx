@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/client";
-import { ToastProvider } from "./toast";
+import { ToastProvider, useToast } from "./toast";
 import { Icon } from "./icons";
 
 export interface Me {
@@ -183,6 +183,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   const pathname = usePathname();
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
+  const toast = useToast();
 
   // Close the mobile sidebar whenever the route changes.
   useEffect(() => setNavOpen(false), [pathname]);
@@ -213,7 +214,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   const current = nav.find((n) => (pathname === n.href ? true : pathname.startsWith(n.href + "/")));
 
   return (
-    <ToastProvider>
+    <>
       <div className="app">
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} aria-hidden />}
         <aside className={`sidebar ${navOpen ? "open" : ""}`}>
@@ -252,7 +253,12 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
               className="btn btn-secondary"
               style={{ padding: "7px 14px", minHeight: 0 }}
               onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
+                try {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                } catch {
+                  // Server unreachable — still end the local session client-side.
+                  toast.push("warning", "Server unreachable; signed out locally.");
+                }
                 router.replace("/login");
               }}
             >
@@ -262,6 +268,6 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
           <div className="content">{children}</div>
         </div>
       </div>
-    </ToastProvider>
+    </>
   );
 }
