@@ -3,6 +3,7 @@ import { ATTENDANCE_STATUSES } from "@/lib/constants";
 import { ApiError } from "@/lib/errors";
 import { authedRoute, jsonOk } from "@/server/api";
 import { assertCanViewClass } from "@/server/rbac";
+import { audit } from "@/server/audit";
 import { parseDate } from "@/app/api/_shared";
 
 interface MarkRow {
@@ -16,7 +17,7 @@ interface MarkRow {
  *  - Duplicate prevention comes from the DB unique triple
  *    @@unique([studentId, classId, date]) via prisma upsert — re-saving the
  *    same student/class/date corrects the status instead of duplicating. */
-export const POST = authedRoute<{ id: string }>(async ({ actor, params, req }) => {
+export const POST = authedRoute<{ id: string }>(async ({ actor, user, params, req }) => {
   await assertCanViewClass(actor, params.id); // must be this class's teacher
 
   const body = (await req.json().catch(() => ({}))) as {
@@ -67,6 +68,15 @@ export const POST = authedRoute<{ id: string }>(async ({ actor, params, req }) =
       })
     )
   );
+
+  void audit({
+    actorId: actor.id,
+    action: "ATTENDANCE_SAVE",
+    entityType: "Class",
+    entityId: params.id,
+    summary: `${user.firstName} ${user.lastName} saved attendance for ${records.length} student(s)`,
+    meta: { date: date.toISOString().slice(0, 10), count: records.length },
+  });
 
   return jsonOk({ ok: true, saved: records.length });
 }, ["TEACHER"]);

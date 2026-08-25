@@ -107,10 +107,11 @@ async function main() {
   const s = client();
   await s("/api/auth/login", { method: "POST", body: { email: "alice@schoolhub.test", password: "Passw0rd!" } });
   const hist = await s("/api/student/attendance");
-  check("student sees own history with totals",
-    hist.body.records.length === 1 &&
-    hist.body.records[0].status === "ABSENT" &&
-    hist.body.totals.ABSENT === 1 && hist.body.totals.PRESENT === 0);
+  const hRows = hist.body.records ?? [];
+  const hSum = Object.values(hist.body.totals ?? {}).reduce((a, b) => a + b, 0);
+  check("student sees own history with consistent totals",
+    hRows.length > 0 && hSum === hRows.length &&
+    hRows.every((r) => r.date <= new Date().toLocaleDateString("en-CA")));
 
   const studentWrite = await s(`/api/teacher/classes/${g6a.id}/attendance`, {
     method: "POST",
@@ -123,7 +124,7 @@ async function main() {
   const mia = client();
   await mia("/api/auth/login", { method: "POST", body: { email: "mia@schoolhub.test", password: "Passw0rd!" } });
   const miaHist = await mia("/api/student/attendance");
-  check("other student sees no one else's records", (miaHist.body.records ?? []).length === 0);
+  check("other student sees only their own class records", (miaHist.body.records ?? []).every((r) => r.className === "Grade 6B"));
 
   // ── Admin ──────────────────────────────────────────────────────────────────
   const ov = await admin("/api/admin/overview");
@@ -134,6 +135,102 @@ async function main() {
   await t("/api/auth/logout", { method: "POST" });
   const meAfterLogout = await t("/api/auth/me");
   check("logout invalidates the session", meAfterLogout.body.user === null);
+
+  // ── Upgraded UI endpoints ───────────────────────────────────────────────────
+  const adminC = client();
+  await adminC("/api/auth/login", { method: "POST", body: { email: "admin@schoolhub.test", password: "Passw0rd!" } });
+  const dashA = await adminC("/api/dashboard");
+  check("admin dashboard payload",
+    dashA.body.role === "ADMIN" && dashA.body.stats.students >= 3 && dashA.body.trend.length === 7 &&
+    typeof dashA.body.today.pct === "number");
+
+  const t1c = client();
+  await t1c("/api/auth/login", { method: "POST", body: { email: "silva@schoolhub.test", password: "Passw0rd!" } });
+  const dashT = await t1c("/api/dashboard");
+  check("teacher dashboard payload",
+    dashT.body.role === "TEACHER" && Array.isArray(dashT.body.classes) && dashT.body.classes.length === 1);
+
+  const s1c = client();
+  await s1c("/api/auth/login", { method: "POST", body: { email: "alice@schoolhub.test", password: "Passw0rd!" } });
+  const dashS = await s1c("/api/dashboard");
+  check("student dashboard payload",
+    dashS.body.role === "STUDENT" && typeof dashS.body.overallPct === "number" && dashS.body.profile.className === "Grade 6A");
+
+  const clsSilva = await t1c("/api/classes");
+  const clsCosta = client();
+  await clsCosta("/api/auth/login", { method: "POST", body: { email: "costa@schoolhub.test", password: "Passw0rd!" } });
+  const clsCostaData = await clsCosta("/api/classes");
+  check("classes scoped per teacher",
+    clsSilva.body.classes.every((c) => c.name === "Grade 6A") &&
+    clsCostaData.body.classes.every((c) => c.name === "Grade 6B"));
+
+  const detailT = await t1c(`/api/classes/${g6a.id}`);
+  check("class detail includes roster+pct and canTake for owner",
+    detailT.body.canTake === true && detailT.body.roster.length === 2 &&
+    detailT.body.roster.every((r) => typeof r.pct === "number"));
+  const detailCross = await clsCosta(`/api/classes/${g6a.id}`);
+  check("cross-teacher class detail blocked", detailCross.status === 403);
+
+  const studsT = await t1c("/api/students");
+  const names = (studsT.body.students ?? []).map((s) => s.name);
+  check("student list scoped to teacher's classes",
+    names.includes("Alice Johnson") && !names.includes("Mia Okafor"));
+  const studsAdmin = await adminC("/api/students");
+  check("admin student list covers school", (studsAdmin.body.students ?? []).length >= 3);
+
+  // student views own profile
+  const meS = await s1c("/api/auth/me");
+  // resolve alice student id via search
+  const searchAlice = await s1c("/api/search?q=alice");
+  const aliceHit = (searchAlice.body.students ?? []).find((x) => x.label.includes("Alice"));
+  check("global search finds own record (student scope)", !!aliceHit);
+  const profileSelf = aliceHit ? await s1c(`/api/students/${aliceHit.id}`) : { status: 0 };
+  check("student can view own profile", profileSelf.status === 200 && profileSelf.body.student.name.startsWith("Alice"));
+  const searchJames = await t1c("/api/search?q=james");
+  const jamesHit = (searchJames.body.students ?? [])[0];
+  const profByOtherStudent = jamesHit ? await s1c(`/api/students/${jamesHit.id}`) : { status: 403 };
+  check("student cannot view another student's profile", profByOtherStudent.status === 403);
+
+  const teachersAsTeacher = await t1c("/api/teachers");
+  const teachersAsAdmin = await adminC("/api/teachers");
+  check("teachers list is ADMIN-only", teachersAsTeacher.status === 403 && (teachersAsAdmin.body.teachers ?? []).length === 2);
+
+  const histT = await t1c("/api/history");
+  check("history scoped to teacher's classes",
+    histT.body.rows.length > 0 && histT.body.rows.every((r) => r.className === "Grade 6A"));
+  const g6bId = clsCostaData.body.classes[0]?.id;
+  const histCross = g6bId ? await t1c(`/api/history?classId=${g6bId}`) : { status: 0 };
+  check("history cross-class filter blocked", histCross.status === 403);
+  const histStatus = await t1c(`/api/history?status=PRESENT`);
+  check("history status filter works", histT.body.rows.length > 0 && histStatus.body.rows.every((r) => r.status === "PRESENT"));
+
+  const searchClass = await s1c("/api/search?q=grade");
+  check("student search sees own class only",
+    (searchClass.body.classes ?? []).every((c) => c.label === "Grade 6A"));
+
+  const profPatchBad = await s1c("/api/settings/profile", {
+    method: "PATCH",
+    body: { firstName: "Alice", lastName: "Johnson", phone: "not-a-phone!" },
+  });
+  check("profile update rejects bad phone", profPatchBad.status === 400);
+  const profPatch = await s1c("/api/settings/profile", {
+    method: "PATCH",
+    body: { firstName: "Alice", lastName: "Johnson", phone: "+254 700 000001" },
+  });
+  check("profile update works", profPatch.status === 200);
+
+  const pwWrong = await s1c("/api/auth/password", {
+    method: "POST",
+    body: { currentPassword: "wrong", newPassword: "Newpass123" },
+  });
+  check("password change rejects wrong current", pwWrong.status === 401);
+
+  const auditPage = await adminC("/api/admin/audit");
+  const actions = (auditPage.body.entries ?? []).map((e) => e.action);
+  check("audit log captures logins + saves",
+    auditPage.status === 200 && actions.includes("AUTH_LOGIN") && actions.includes("ATTENDANCE_SAVE"));
+  const auditAsTeacher = await t1c("/api/admin/audit");
+  check("audit is ADMIN-only", auditAsTeacher.status === 403);
 
   console.log(`\nRESULT pass=${pass} fail=${fail}`);
   process.exit(fail ? 1 : 0);

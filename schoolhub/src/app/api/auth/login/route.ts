@@ -10,6 +10,7 @@ import {
 } from "@/server/session";
 import { verifyPassword } from "@/server/password";
 import { jsonOk, route } from "@/server/api";
+import { audit } from "@/server/audit";
 
 export const POST = route(async ({ req }) => {
   const body = (await req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
@@ -36,6 +37,13 @@ export const POST = route(async ({ req }) => {
   recordLoginSuccess(key);
 
   const session = await createSession(user.id, req.headers.get("user-agent") ?? undefined);
+  void audit({
+    actorId: user.id,
+    action: "AUTH_LOGIN",
+    entityType: "User",
+    entityId: user.id,
+    summary: `${user.firstName} ${user.lastName} signed in`,
+  });
   const res = jsonOk({
     user: {
       id: user.id,

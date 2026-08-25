@@ -11,6 +11,8 @@ export const GET = route(async () => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      studentId: user.studentId ?? null,
+      teacherId: user.teacherId ?? null,
     },
   });
 });
