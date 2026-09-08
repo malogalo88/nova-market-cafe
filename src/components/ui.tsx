@@ -415,11 +415,9 @@ export function Modal({
       }
     };
     document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    // Don't lock body overflow - let the page scroll naturally
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
     };
   }, [open, onClose]);
 
@@ -427,7 +425,7 @@ export function Modal({
   return (
     <div
       className="anim-fade fixed inset-0 z-[80] flex items-end justify-center sm:items-center"
-      style={{ background: "rgba(8,12,24,.55)", backdropFilter: "blur(2px)" }}
+      style={{ background: "rgba(8,12,24,.5)", backdropFilter: "blur(0)" }}
       onMouseDown={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
@@ -436,8 +434,8 @@ export function Modal({
       aria-label={title}
     >
       <div
-        className="anim-fade-up card flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl max-sm:rounded-b-none"
-        style={{ maxWidth: width }}
+        className="anim-fade-up card flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl sm:rounded-lg"
+        style={{ maxWidth: width, margin: "0 auto" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="sm:border-b flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderColor: "var(--border)" }}>

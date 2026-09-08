@@ -196,7 +196,7 @@ export default function Dashboard(): React.ReactElement {
       ) : (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard
               icon={<DollarSign size={19} />}
               tone="accent"

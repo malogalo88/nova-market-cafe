@@ -237,7 +237,7 @@ export default function Layout(): React.ReactElement {
                     style={({ isActive }) => (isActive ? { background: "var(--accent-soft)" } : undefined)}
                   >
                     <item.icon size={17} strokeWidth={2.2} />
-                    <span className="flex-1 truncate">{item.label}</span>
+                    <span className="flex-1 truncate text-[13px] font-medium">{item.label}</span>
                     {item.to === "/purchase-orders" && db.purchaseOrders.some((po) => po.status === "ordered") && (
                       <Badge tone="info">In transit</Badge>
                     )}
@@ -315,7 +315,7 @@ export default function Layout(): React.ReactElement {
               </span>
             </IconButton>
             {bellOpen && (
-              <div className="card anim-fade-up absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden shadow-xl">
+              <div className="card anim-fade-up absolute right-0 z-50 mt-2 w-full max-w-sm overflow-hidden shadow-xl">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
                   <span className="text-[13px] font-bold">Notifications</span>
                   {unread > 0 && (

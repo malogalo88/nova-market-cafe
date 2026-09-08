@@ -246,7 +246,7 @@ export default function PurchaseOrders(): React.ReactElement {
         onClose={() => setDetailId(null)}
         title={detail ? `${detail.poNumber} · ${supplierName(detail.supplierId)}` : ""}
         subtitle={detail?.receivedAt ? `Received ${fmtDateTime(detail.receivedAt)}` : detail?.orderedAt ? `Sent ${fmtDateTime(detail.orderedAt)} by ${detail.createdBy}` : undefined}
-        width={600}
+        width={460}
         footer={
           detail && (
             <>
@@ -344,7 +344,7 @@ export default function PurchaseOrders(): React.ReactElement {
         open={editorOpen}
         onClose={() => setEditorOpen(false)}
         title={editingId ? "Edit draft order" : "New purchase order"}
-        width={620}
+        width={480}
         footer={
           <>
             <Button onClick={() => setEditorOpen(false)}>Discard</Button>
@@ -390,10 +390,13 @@ export default function PurchaseOrders(): React.ReactElement {
               </div>
 
               {/* Items */}
-              {items.length === 0 ? (
-                <p className="rounded-xl p-4 text-center text-[13px] text-muted" style={{ background: "var(--surface-2)" }}>
-                  Add the products you want to reorder.
-                </p>
+{items.length === 0 ? (
+                <EmptyState
+                  icon={<PackageOpen size={20} />}
+                  title="Add products to order"
+                  message="Search and add products to begin your purchase order."
+                  action={<Button variant="secondary" onClick={() => setProductSearch("")}>Clear search</Button>}
+                />
               ) : (
                 <table className="w-full text-[13px]">
                   <tbody>
