@@ -500,38 +500,13 @@ export default function POS(): React.ReactElement {
               })}
             </div>
           )}
-                    </span>
-                    {inCart > 0 && (
-                      <span
-                        className="absolute top-2 right-2 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-black text-white shadow"
-                        style={{ background: "var(--accent)" }}
-                      >
-                        {inCart}
-                      </span>
-                    )}
-                    <span className="block p-2.5">
-                      <span className="block truncate text-[13px] font-bold leading-tight">{p.name}</span>
-                      <span className="mt-1 flex items-center justify-between gap-1">
-                        <span className="text-[13.5px] font-extrabold">{fmtMoney(p.price, symbol)}</span>
-                        <span
-                          className="text-[10.5px] font-bold"
-                          style={{ color: out ? "var(--danger)" : p.stock <= p.lowStockThreshold ? "var(--warn)" : "var(--muted)" }}
-                        >
-                          {out ? "Out" : `${p.stock} left`}
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         {/* ── Cart (desktop panel / hidden on small screens) ───── */}
         <aside className="card sticky top-[4.25rem] hidden max-h-[calc(100dvh-6rem)] overflow-hidden lg:block">
           {cartBody}
         </aside>
+      </div>
       </div>
 
       {/* ── Mobile cart launcher ─────────────────────────────── */}
