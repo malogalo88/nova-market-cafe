@@ -3,6 +3,7 @@ import {
   Banknote,
   Check,
   ClipboardList,
+  PackageOpen,
   Plus,
   SendHorizonal,
   Trash2,
