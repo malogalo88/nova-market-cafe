@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { create } from "zustand";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Check,
@@ -422,7 +423,7 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div
       className="anim-fade fixed inset-0 z-[80] overflow-y-auto"
       style={{ background: "rgba(8,12,24,.5)" }}
@@ -458,7 +459,8 @@ export function Modal({
         )}
       </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
