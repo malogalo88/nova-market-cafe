@@ -434,8 +434,8 @@ export function Modal({
       aria-label={title}
     >
       <div
-        className="anim-fade-up card flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl sm:rounded-lg"
-        style={{ maxWidth: width, margin: "0 auto" }}
+        className="anim-fade-up card flex w-full flex-col overflow-hidden shadow-2xl sm:rounded-lg"
+        style={{ maxWidth: width, margin: "0 auto", maxHeight: "calc(100vh - 32px)" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="sm:border-b flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderColor: "var(--border)" }}>
@@ -447,7 +447,7 @@ export function Modal({
             <X size={17} />
           </IconButton>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-3.5" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
             {footer}
