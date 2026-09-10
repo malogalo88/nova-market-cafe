@@ -424,20 +424,23 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="anim-fade fixed inset-0 z-[80] flex items-end justify-center sm:items-center"
+      className="anim-fade fixed inset-0 z-[80] overflow-y-auto"
       style={{ background: "rgba(8,12,24,.5)" }}
-      onMouseDown={(e) => {
-        if (closeOnBackdrop && e.target === e.currentTarget) onClose();
-      }}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <div
-        className="anim-fade-up card flex w-full flex-col overflow-hidden shadow-2xl sm:rounded-lg"
-        style={{ maxWidth: width, margin: "0 auto", maxHeight: "calc(100vh - 32px)" }}
-        onMouseDown={(e) => e.stopPropagation()}
+        className="flex min-h-full items-end justify-center py-4 sm:items-center"
+        onMouseDown={(e) => {
+          if (closeOnBackdrop && e.target === e.currentTarget) onClose();
+        }}
       >
+        <div
+          className="anim-fade-up card flex w-full flex-col overflow-hidden shadow-2xl sm:rounded-lg"
+          style={{ maxWidth: width, maxHeight: "calc(100vh - 32px)" }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
         <div className="sm:border-b flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderColor: "var(--border)" }}>
           <div>
             <h2 className="text-[16px] font-bold">{title}</h2>
@@ -453,6 +456,7 @@ export function Modal({
             {footer}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
