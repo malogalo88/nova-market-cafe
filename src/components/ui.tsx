@@ -425,7 +425,7 @@ export function Modal({
   return (
     <div
       className="anim-fade fixed inset-0 z-[80] flex items-end justify-center sm:items-center"
-      style={{ background: "rgba(8,12,24,.5)", backdropFilter: "blur(0)" }}
+      style={{ background: "rgba(8,12,24,.5)" }}
       onMouseDown={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
