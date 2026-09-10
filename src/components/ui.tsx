@@ -450,7 +450,7 @@ export function Modal({
             <X size={17} />
           </IconButton>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-auto overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-3.5" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
             {footer}
