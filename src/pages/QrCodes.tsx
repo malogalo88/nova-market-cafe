@@ -25,6 +25,7 @@ import {
   useConfirm,
 } from "../components/ui";
 import { fmtDate } from "../lib/format";
+import { HelpLink } from "../help/HelpLink";
 
 export default function QrCodes(): React.ReactElement {
   const db = useAppStore((s) => s.db);
@@ -67,6 +68,7 @@ export default function QrCodes(): React.ReactElement {
             Print these codes and stick them on tables or walls. Customers scan → browse → order. Orders land in{" "}
             <b>Customer Orders</b>.
           </p>
+          <div className="mt-1"><HelpLink slug="how-qr-ordering-works" label="How QR ordering works" /></div>
         </div>
         {!db.settings.qr.enabled && (
           <Badge tone="warn">QR ordering is OFF — enable it in Settings → QR Ordering</Badge>

@@ -26,8 +26,9 @@ import {
   Textarea,
   toast,
   useConfirm,
-  type Column,
+type Column,
 } from "../components/ui";
+import { HelpLink } from "../help/HelpLink";
 import { fmtDate, fmtDateTime, fmtMoney } from "../lib/format";
 
 function poStatusBadge(status: PurchaseOrder["status"]) {
@@ -190,8 +191,9 @@ export default function PurchaseOrders(): React.ReactElement {
     <div className="anim-fade-up">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Purchase Orders</h1>
+<h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Purchase Orders</h1>
           <p className="mt-0.5 text-[13px] text-muted">Restock products: draft → ordered → received.</p>
+          <div className="mt-1"><HelpLink slug="what-is-a-purchase-order" label="How purchase orders work" /></div>
         </div>
         <Button variant="primary" onClick={openNewEditor}>
           <Plus size={16} /> New Purchase Order

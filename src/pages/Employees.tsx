@@ -30,6 +30,7 @@ import {
 } from "../components/ui";
 import { fmtDate, fmtDateTime, relativeTime } from "../lib/format";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "../lib/permissions";
+import { HelpLink } from "../help/HelpLink";
 
 interface EmpForm {
   id?: string;
@@ -347,6 +348,7 @@ export default function Employees(): React.ReactElement {
             <Trash2 size={12} className="mr-1 inline" style={{ color: "var(--danger)" }} />
             Cashiers' manual discounts are capped at {ROLE_PERMISSIONS.cashier.maxDiscountPercent}% and managers at {ROLE_PERMISSIONS.manager.maxDiscountPercent}%.
           </p>
+          <div className="text-center"><HelpLink slug="roles-and-permissions" label="Full roles & permissions guide" /></div>
         </div>
       </Modal>
     </div>

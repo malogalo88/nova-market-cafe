@@ -28,6 +28,7 @@ import {
   YAxis,
 } from "recharts";
 import { useAppStore } from "../store/useStore";
+import { HelpLink } from "../help/HelpLink";
 import type { DB } from "../lib/types";
 import {
   completedTxns,
@@ -96,6 +97,7 @@ export default function Reports(): React.ReactElement {
           <p className="mt-0.5 text-[13px] text-muted">
             {range.label} · {fmtDateShort(range.startKey)} – {fmtDateShort(range.endKey)}
           </p>
+          <div className="mt-1"><HelpLink slug="reports-overview" label="How to read these reports" /></div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {PRESETS.map((p) => (

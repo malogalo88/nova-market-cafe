@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bell,
+  BookOpen,
   Boxes,
   ClipboardList,
   CircleHelp,
@@ -77,6 +78,7 @@ const NAV: NavSection[] = [
   {
     title: "System",
     items: [
+      { to: "/help", label: "Help & Guide", icon: BookOpen, show: () => true },
       { to: "/chat", label: "Staff Chat", icon: MessagesSquare, show: () => true },
       { to: "/notifications", label: "Notifications", icon: Bell, show: () => true },
       { to: "/qr", label: "QR Ordering", icon: QrCodeIcon, show: (p) => p.manageQr },
@@ -103,7 +105,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
           <h3 className="mb-2 text-[13px] font-bold tracking-wide text-muted uppercase">Keyboard shortcuts</h3>
           <div className="space-y-2 text-[13.5px]">
             {[
-              ["/ or F2", "Focus the search box (New Sale)"],
+              ["F2", "Focus the search box (New Sale)"],
               ["F4", "Hold the current sale"],
               ["F9", "Open payment / complete sale"],
               ["Esc", "Close dialogs · clear search"],
@@ -127,6 +129,13 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
         <p className="rounded-xl bg-surface-2 p-3 text-xs text-muted">
           You're currently exploring <b>demo data</b>. Anything you change is safe — you can restore fresh demo data anytime from Settings.
         </p>
+        <Link
+          to="/help"
+          className="btn btn-secondary w-full"
+          onClick={onClose}
+        >
+          <BookOpen size={16} /> Open the full Help & User Guide
+        </Link>
       </div>
     </Modal>
   );

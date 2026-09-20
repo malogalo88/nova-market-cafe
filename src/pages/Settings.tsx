@@ -28,6 +28,7 @@ import {
 } from "../components/ui";
 import { readFileAsText } from "../lib/csv";
 import { downloadJSON } from "../lib/storage";
+import { HelpLink } from "../help/HelpLink";
 
 type Tab = "business" | "currency" | "tax" | "receipts" | "payments" | "loyalty" | "qr" | "appearance" | "data";
 
@@ -312,6 +313,10 @@ export default function Settings(): React.ReactElement {
       {/* QR ORDERING */}
       {tab === "qr" && canQr && (
         <Card className="max-w-xl space-y-4 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[13px] font-medium text-muted">QR ordering options</span>
+            <HelpLink slug="table-vs-counter" label="Counter vs table service" />
+          </div>
           <Toggle
             checked={s.qr.enabled}
             onChange={(v) => set("qr", { ...s.qr, enabled: v })}

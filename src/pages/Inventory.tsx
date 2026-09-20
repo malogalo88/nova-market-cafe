@@ -28,6 +28,7 @@ import {
 } from "../components/ui";
 import { fmtDateTime, fmtMoney } from "../lib/format";
 import { inventoryValue, stockStatus } from "../lib/analytics";
+import { HelpLink } from "../help/HelpLink";
 
 type AdjustMode = "add" | "remove" | "set";
 
@@ -218,8 +219,9 @@ export default function Inventory(): React.ReactElement {
     <div className="anim-fade-up">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Inventory</h1>
+<h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Inventory</h1>
           <p className="mt-0.5 text-[13px] text-muted">What's on the shelf and what moved.</p>
+          <div className="mt-1"><HelpLink slug="adjust-stock" label="How to adjust stock" /></div>
         </div>
       </div>
 

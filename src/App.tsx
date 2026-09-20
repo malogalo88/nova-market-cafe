@@ -32,6 +32,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const CustomerOrders = lazy(() => import("./pages/CustomerOrders"));
 const QrCodes = lazy(() => import("./pages/QrCodes"));
 const StaffChat = lazy(() => import("./pages/StaffChat"));
+const HelpPage = lazy(() => import("./pages/Help"));
 
 function Guard({ children }: { children: React.ReactElement }): React.ReactElement | null {
   const { ready, sessionEmployeeId, db } = useAppStore();
@@ -100,6 +101,8 @@ export default function App(): React.ReactElement {
               <Route path="/orders" element={<CustomerOrders />} />
               <Route path="/qr" element={<QrCodes />} />
               <Route path="/chat" element={<StaffChat />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="/help/:slug" element={<HelpPage />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
