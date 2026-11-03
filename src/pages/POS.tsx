@@ -372,6 +372,14 @@ export default function POS(): React.ReactElement {
           </div>
         </dl>
       </div>
+
+      {cart.length > 0 && (
+        <div className="px-3 py-2">
+          <Button variant="primary" size="lg" className="w-full" onClick={openPayment}>
+            <CreditCard size={18} /> Complete sale — {fmtMoney(calc.total, symbol)}
+          </Button>
+        </div>
+      )}
     </div>
   );
 
