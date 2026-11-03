@@ -113,6 +113,7 @@ export interface Transaction {
   pointsRedeemed: number;
   pointsEarned: number;
   tax: number;
+  tip: number;
   total: number;
   paymentMethod: PaymentMethod;
   amountPaid: number;

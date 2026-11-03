@@ -72,6 +72,7 @@ export function buildReceiptHTML(txn: Transaction, db: DB, opts?: { refunded?: b
       ${txn.discount > 0 ? `<tr><td>Discount${txn.promoNames.length ? ` (${esc(txn.promoNames.join(", "))})` : ""}</td><td class="num">-${money(txn.discount, s.currencySymbol)}</td></tr>` : ""}
       ${txn.pointsRedeemed > 0 ? `<tr><td>Loyalty points (${txn.pointsRedeemed})</td><td class="num">included in discount</td></tr>` : ""}
       <tr><td>Tax (${(s.taxEnabled ? s.taxRate : 0).toFixed(1)}%)</td><td class="num">${money(txn.tax, s.currencySymbol)}</td></tr>
+      ${txn.tip && txn.tip > 0 ? `<tr><td>Tip</td><td class="num">${money(txn.tip, s.currencySymbol)}</td></tr>` : ""}
       <tr><td class="grand">TOTAL</td><td class="num grand">${money(txn.total, s.currencySymbol)}</td></tr>
       <tr><td>Paid (${PAYMENT_LABELS[txn.paymentMethod]})</td><td class="num">${money(txn.amountPaid, s.currencySymbol)}</td></tr>
       ${txn.change !== 0 ? `<tr><td>Change</td><td class="num">${money(txn.change, s.currencySymbol)}</td></tr>` : ""}

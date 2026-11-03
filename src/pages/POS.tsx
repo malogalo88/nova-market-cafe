@@ -87,6 +87,7 @@ export default function POS(): React.ReactElement {
 
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [tip, setTip] = useState("");
 
   const enabledMethods = useMemo(
     () => (Object.keys(PAYMENT_LABELS) as PaymentMethod[]).filter((m) => db.settings.paymentMethods[m]),
@@ -184,11 +185,12 @@ export default function POS(): React.ReactElement {
     }
     const res = store.completeSale({
       paymentMethod: method,
-      amountPaid: method === "cash" ? Number(cashReceived) || 0 : calc.total,
+      amountPaid: method === "cash" ? Number(cashReceived) || 0 : calc.total + (Number(tip) || 0),
       customerId: cartCustomerId,
       couponCode: couponCode.trim() || undefined,
       manualDiscount,
       pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
+      tip: Number(tip) || 0,
       note: note.trim() || undefined,
     });
     if (!res.ok) {
@@ -222,7 +224,7 @@ export default function POS(): React.ReactElement {
 
   const heldCount = db.heldSales.length;
   const totalItems = cart.reduce((n, l) => n + l.qty, 0);
-  const changeDue = Math.max(0, (Number(cashReceived) || 0) - calc.total);
+  const changeDue = Math.max(0, (Number(cashReceived) || 0) - calc.total - (Number(tip) || 0));
 
   const activeProductCount = db.products.filter((p) => p.status === "active").length;
 
@@ -729,6 +731,37 @@ export default function POS(): React.ReactElement {
           ))}
         </div>
 
+        {/* Tip */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Tip (optional)</span>
+            <span className="text-[12px] text-muted">+{fmtMoney(Number(tip) || 0, symbol)}</span>
+          </div>
+          <div className="flex gap-1">
+            {[1, 2, 5].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTip(String(t))}
+                className="flex-1 rounded-lg border py-2 text-[12px] font-bold transition-colors"
+                style={{
+                  borderColor: Number(tip) === t ? "var(--accent)" : "var(--border)",
+                  background: Number(tip) === t ? "var(--accent-soft)" : "transparent",
+                  color: Number(tip) === t ? "var(--accent-strong)" : "var(--ink)",
+                }}
+              >
+                {fmtMoney(t, symbol)}
+              </button>
+            ))}
+            <Input
+              className="flex-1 text-[12px] text-center"
+              placeholder="Custom"
+              value={tip}
+              onChange={(e) => setTip(e.target.value.replace(/[^\d.]/g, ""))}
+              inputMode="decimal"
+            />
+          </div>
+        </div>
+
         {method === "cash" ? (
           <div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -765,12 +798,12 @@ export default function POS(): React.ReactElement {
           </div>
         ) : (
           <p className="rounded-xl px-4 py-6 text-center text-[13.5px] text-muted" style={{ background: "var(--surface-2)" }}>
-            Confirm the {fmtMoney(calc.total, symbol)} charge on your terminal, then complete the sale below.
+            Confirm the {fmtMoney(calc.total + (Number(tip) || 0), symbol)} charge on your terminal, then complete the sale below.
           </p>
         )}
 
         <Button variant="primary" size="lg" className="mt-4 w-full" onClick={finishSale}>
-          <Check size={18} /> Complete sale — {fmtMoney(calc.total, symbol)}
+          <Check size={18} /> Complete sale — {fmtMoney(calc.total + (Number(tip) || 0), symbol)}
         </Button>
       </Modal>
 
@@ -785,6 +818,7 @@ export default function POS(): React.ReactElement {
             <p className="mt-1 text-[13px] text-muted">
               {completedTxn.number} · {PAYMENT_LABELS[completedTxn.paymentMethod]}
               {completedTxn.paymentMethod === "cash" && completedTxn.change > 0 && ` · Change ${fmtMoney(completedTxn.change, symbol)}`}
+              {completedTxn.tip && completedTxn.tip > 0 && ` · Tip ${fmtMoney(completedTxn.tip, symbol)}`}
             </p>
             {completedTxn.customerName && completedTxn.pointsEarned > 0 && (
               <p className="mt-1 text-xs font-semibold" style={{ color: "var(--accent)" }}>

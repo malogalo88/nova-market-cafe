@@ -52,6 +52,7 @@ export interface CompleteSaleInput {
   couponCode?: string;
   manualDiscount?: { type: "percent" | "fixed"; value: number } | null;
   pointsToRedeem?: number;
+  tip?: number;
   note?: string;
 }
 
@@ -1324,10 +1325,11 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
         pointsRedeemed: calc.pointsRedeemed,
         pointsEarned,
         tax: calc.tax,
-        total: calc.total,
+        tip: Math.round((input.tip ?? 0) * 100) / 100,
+        total: calc.total + (input.tip ?? 0),
         paymentMethod: input.paymentMethod,
         amountPaid: Math.round(amountPaid * 100) / 100,
-        change: Math.round((amountPaid - calc.total) * 100) / 100,
+        change: Math.round((amountPaid - calc.total - (input.tip ?? 0)) * 100) / 100,
         note: input.note?.trim() || undefined,
         status: "completed",
       };
@@ -1645,6 +1647,7 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
           pointsRedeemed: 0,
           pointsEarned: 0,
           tax: o.tax,
+          tip: 0,
           total: o.total,
           paymentMethod,
           amountPaid: o.total,

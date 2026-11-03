@@ -227,6 +227,7 @@ export function buildDemoDB(): DB {
         pointsRedeemed: 0,
         pointsEarned,
         tax,
+        tip: 0,
         total,
         paymentMethod,
         amountPaid,

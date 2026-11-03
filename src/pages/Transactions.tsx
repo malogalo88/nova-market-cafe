@@ -307,6 +307,9 @@ export default function Transactions(): React.ReactElement {
               {detail.tax > 0 && (
                 <div className="flex justify-between text-muted"><dt>Tax</dt><dd>{fmtMoney(detail.tax, symbol)}</dd></div>
               )}
+              {detail.tip && detail.tip > 0 && (
+                <div className="flex justify-between" style={{ color: "var(--accent)" }}><dt>Tip</dt><dd>{fmtMoney(detail.tip, symbol)}</dd></div>
+              )}
               <div className="flex justify-between border-t pt-1.5 text-base font-black" style={{ borderColor: "var(--border)" }}>
                 <dt>Total</dt><dd>{fmtMoney(detail.total, symbol)}</dd>
               </div>
