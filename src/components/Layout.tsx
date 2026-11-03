@@ -432,7 +432,7 @@ export default function Layout(): React.ReactElement {
         </header>
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 pt-4 pb-20 sm:px-5 lg:pb-8">
-          <Outlet />
+          <div className="page-enter"><Outlet /></div>
         </main>
 
         {/* Mobile bottom nav */}
