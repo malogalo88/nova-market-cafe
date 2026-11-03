@@ -406,3 +406,8 @@ body {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }
+
+/* ── AI chat widget ─────────────────────────────────────────────────────── */
+.chat-enter {
+  animation: fadeUp 0.35s ease both;
+}

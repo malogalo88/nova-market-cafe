@@ -5,6 +5,7 @@ import {
   Bell,
   BookOpen,
   Boxes,
+  Bot,
   ClipboardList,
   CircleHelp,
   LogOut,
@@ -29,6 +30,7 @@ import {
 import { useAppStore } from "../store/useStore";
 import { ROLE_LABELS, type Permissions } from "../lib/permissions";
 import { Badge, IconButton, Modal, toast } from "./ui";
+import { AIChat } from "./AIChat";
 import { relativeTime } from "../lib/format";
 import { setChatNotifier, startChatPresence, stopChatPresence, useChatSnapshot } from "../lib/chat";
 
@@ -151,6 +153,7 @@ export default function Layout(): React.ReactElement {
   const [helpOpen, setHelpOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [aiChatOpen, setAIChatOpen] = useState(false);
 
   const unread = db.notifications.filter((n) => !n.read).length;
   const chatTotal = useChatSnapshot().totalUnread;
@@ -383,6 +386,16 @@ export default function Layout(): React.ReactElement {
             <CircleHelp size={18} />
           </IconButton>
 
+          <IconButton label="AI Assistant" onClick={() => setAIChatOpen((v) => !v)}>
+            <Bot size={18} />
+            {aiChatOpen && (
+              <span className="absolute -top-1 -right-1 flex h-3 min-w-3 items-center justify-center rounded-full px-0.5 text-[9px] font-bold text-white shadow"
+                    style={{ background: "var(--accent)" }}>
+                1
+              </span>
+            )}
+          </IconButton>
+
           {/* User chip */}
           <div className="relative">
             <button
@@ -470,6 +483,7 @@ export default function Layout(): React.ReactElement {
       </div>
 
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <AIChat open={aiChatOpen} onClose={() => setAIChatOpen(false)} />
     </div>
   );
 }
