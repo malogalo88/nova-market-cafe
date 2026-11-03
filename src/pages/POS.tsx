@@ -15,6 +15,7 @@ import {
   Tag,
   Trash2,
   UserRound,
+  Users,
   Wallet,
   X,
   Download,
@@ -24,7 +25,7 @@ import { useAppStore, calculateCart } from "../store/useStore";
 import { currentPerms } from "../store/useStore";
 import type { PaymentMethod, Transaction } from "../lib/types";
 import { PAYMENT_LABELS } from "../lib/types";
-import { Badge, Button, EmptyState, IconButton, Input, Modal, Select, Textarea, toast } from "../components/ui";
+import { Badge, Button, EmptyState, IconButton, Input, Modal, SearchInput, Select, Textarea, toast } from "../components/ui";
 import { fmtMoney } from "../lib/format";
 import { buildReceiptHTML, downloadReceipt, printReceipt } from "../lib/receipts";
 
@@ -85,6 +86,9 @@ export default function POS(): React.ReactElement {
   const [completedTxn, setCompletedTxn] = useState<Transaction | null>(null);
   const [receiptPreview, setReceiptPreview] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const customerSearchRef = useRef<HTMLInputElement>(null);
 
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
@@ -99,6 +103,17 @@ export default function POS(): React.ReactElement {
     () => (cartCustomerId ? db.customers.find((c) => c.id === cartCustomerId) ?? null : null),
     [cartCustomerId, db.customers]
   );
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return db.customers.slice(0, 50);
+    return db.customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone ?? "").toLowerCase().includes(q) ||
+        (c.email ?? "").toLowerCase().includes(q)
+    );
+  }, [db.customers, customerSearch]);
 
   const manualDiscount =
     manualPct && Number(manualPct) > 0 ? { type: "percent" as const, value: Number(manualPct) } : null;
@@ -223,6 +238,14 @@ export default function POS(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.length, payOpen, completedTxn]);
 
+  // Reset search and focus input when customer picker opens
+  useEffect(() => {
+    if (customerPickerOpen) {
+      setCustomerSearch("");
+      customerSearchRef.current?.focus();
+    }
+  }, [customerPickerOpen]);
+
   const heldCount = db.heldSales.length;
   const totalItems = cart.reduce((n, l) => n + l.qty, 0);
   const changeDue = Math.max(0, (Number(cashReceived) || 0) - calc.total - (Number(tip) || 0));
@@ -251,6 +274,19 @@ export default function POS(): React.ReactElement {
                 style={{ background: "var(--warn)" }}
               >
                 {heldCount}
+              </span>
+            )}
+          </IconButton>
+          <IconButton
+            label={customer ? `Customer: ${customer.name}` : "Add customer"}
+            onClick={() => setCustomerPickerOpen(true)}
+            className="relative"
+          >
+            <Users size={16} />
+            {customer && (
+              <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
+                    style={{ background: "var(--accent)" }}>
+                1
               </span>
             )}
           </IconButton>
@@ -703,6 +739,57 @@ export default function POS(): React.ReactElement {
         }
       >
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Gift wrap, extra napkins…" autoFocus maxLength={300} />
+      </Modal>
+
+      {/* ── Customer picker ─────────────────────────────────────── */}
+      <Modal
+        open={customerPickerOpen}
+        onClose={() => setCustomerPickerOpen(false)}
+        title={customer ? "Change customer" : "Select customer"}
+        subtitle="Search by name, phone, or email."
+        width={460}
+        footer={
+          <>
+            {customer && (
+              <Button variant="danger-soft" onClick={() => { store.setCartCustomer(null); setCustomerPickerOpen(false); }}>
+                Remove customer
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setCustomerPickerOpen(false)}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        <SearchInput
+          value={customerSearch}
+          onChange={setCustomerSearch}
+          placeholder="Search customers…"
+          className="mb-4"
+          inputRef={customerSearchRef}
+        />
+        <div className="max-h-[400px] overflow-y-auto space-y-1">
+          {filteredCustomers.length === 0 ? (
+            <div className="px-4 py-8 text-center text-[13px] text-muted">No customers found.</div>
+          ) : (
+            filteredCustomers.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  store.setCartCustomer(c.id);
+                  setCustomerPickerOpen(false);
+                }}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${c.id === cartCustomerId ? "bg-accent-soft text-accent-strong" : "hover:bg-surface-2 text-ink"}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold">{c.name}</p>
+                  <p className="text-[11px] text-muted">{c.phone ?? c.email ?? "Walk-in"}</p>
+                </div>
+                <Badge tone={c.loyaltyPoints > 0 ? "success" : "neutral"}>{c.loyaltyPoints} pts</Badge>
+              </button>
+            ))
+          )}
+        </div>
       </Modal>
 
       {/* ── Payment ──────────────────────────────────────────── */}
