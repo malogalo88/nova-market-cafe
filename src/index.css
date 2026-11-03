@@ -4,47 +4,53 @@
 
 /* ── Semantic theme tokens (swap automatically in dark mode) ───────────── */
 :root {
-  --bg: #f4f6fb;
+  --bg: #f3f5fb;
   --surface: #ffffff;
-  --surface-2: #eef1f7;
+  --surface-2: #eef2f8;
   --surface-3: #e4e9f2;
-  --border: #dfe4ee;
-  --ink: #101728;
-  --muted: #5b6779;
+  --border: #dbe1ea;
+  --ink: #0f1626;
+  --muted: #5c687a;
   --accent: #4f46e5;
   --accent-strong: #4338ca;
-  --accent-soft: #eceafd;
+  --accent-soft: #edeaff;
   --accent-ink: #ffffff;
   --success: #059669;
-  --success-soft: #d9f3ea;
+  --success-soft: #dcfce7;
   --warn: #b45309;
-  --warn-soft: #fdeed3;
+  --warn-soft: #fef3c7;
   --danger: #dc2626;
-  --danger-soft: #fde3e3;
+  --danger-soft: #fee2e2;
   --info: #0369a1;
-  --info-soft: #e0f0fa;
+  --info-soft: #e0f2fe;
+  --shadow-sm: 0 1px 2px 0 rgb(16 22 38 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(16 22 38 / 0.08), 0 2px 4px -2px rgb(16 22 38 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(16 22 38 / 0.09), 0 4px 6px -4px rgb(16 22 38 / 0.04);
 }
 
 .dark {
-  --bg: #0b1120;
-  --surface: #131c30;
-  --surface-2: #1a2439;
-  --surface-3: #232f49;
-  --border: #27334d;
-  --ink: #eef2f9;
-  --muted: #93a0b8;
+  --bg: #0a0e1c;
+  --surface: #111827;
+  --surface-2: #172032;
+  --surface-3: #1e293b;
+  --border: #263046;
+  --ink: #eef2f7;
+  --muted: #94a3b8;
   --accent: #6366f1;
   --accent-strong: #818cf8;
-  --accent-soft: #252a4d;
+  --accent-soft: #21254d;
   --accent-ink: #ffffff;
   --success: #34d399;
-  --success-soft: #10342a;
+  --success-soft: #064e3b;
   --warn: #fbbf24;
-  --warn-soft: #3a2d10;
+  --warn-soft: #451a03;
   --danger: #f87171;
-  --danger-soft: #3d1a1a;
+  --danger-soft: #450a0a;
   --info: #38bdf8;
   --info-soft: #0c2c40;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.25), 0 2px 4px -2px rgb(0 0 0 / 0.15);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.25), 0 4px 6px -4px rgb(0 0 0 / 0.15);
 }
 
 @theme inline {
@@ -123,24 +129,34 @@ body {
     padding: 0.55rem 0.95rem;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.06s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.06s, box-shadow 0.15s;
     white-space: nowrap;
     user-select: none;
     line-height: 1.2;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
   }
   .btn:active:not(:disabled) {
     transform: translateY(1px);
+    box-shadow: var(--shadow-sm);
   }
   .btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
   }
   .btn-primary {
     background: var(--accent);
     color: var(--accent-ink);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), var(--shadow-sm);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--accent-strong);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent), var(--shadow-md);
   }
   .btn-secondary {
     background: var(--surface);
@@ -149,6 +165,7 @@ body {
   }
   .btn-secondary:hover:not(:disabled) {
     background: var(--surface-2);
+    border-color: var(--border);
   }
   .btn-ghost {
     background: transparent;
@@ -195,7 +212,8 @@ body {
     border-radius: 10px;
     padding: 0.55rem 0.75rem;
     font-size: 14px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+    box-shadow: var(--shadow-sm);
   }
   .input::placeholder {
     color: var(--muted);
@@ -205,6 +223,9 @@ body {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  .input:hover:not(:focus) {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--ink) 15%);
   }
   .input-error {
     border-color: var(--danger);
@@ -222,6 +243,10 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card:hover {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--ink) 10%);
   }
 
   .badge {
@@ -234,6 +259,7 @@ body {
     border-radius: 999px;
     line-height: 1.5;
     white-space: nowrap;
+    box-shadow: var(--shadow-sm);
   }
 
   .th {
@@ -354,4 +380,29 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ── Page entrance ───────────────────────────────────────────────────────── */
+.page-enter {
+  animation: fadeUp 0.35s ease both;
+}
+
+.product-card {
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.product-card:active {
+  transform: translateY(-2px);
+}
+
+.stat-card {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
 }

@@ -218,7 +218,7 @@ export function Toggle({
     <div className={`flex items-center justify-between gap-4 ${disabled ? "opacity-60" : ""}`}>
       {label && (
         <div>
-          <div className="text-[13.5px] font-semibold">{label}</div>
+          <div className="text-[13.5px] font-semibold text-ink">{label}</div>
           {description && <div className="mt-0.5 text-xs text-muted">{description}</div>}
         </div>
       )}
@@ -228,13 +228,14 @@ export function Toggle({
         aria-label={ariaLabel || label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${label ? "" : "ml-auto"}`}
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-all ${label ? "" : "ml-auto"}`}
         style={{
           background: checked ? "var(--accent)" : "var(--surface-3)",
+          boxShadow: checked ? "0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent)" : undefined,
         }}
       >
         <span
-          className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+          className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
           style={{ transform: checked ? "translateX(20px)" : "none" }}
         />
       </button>
@@ -313,16 +314,16 @@ export function EmptyState({
   action?: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="anim-fade-up flex flex-col items-center justify-center px-6 py-14 text-center">
+    <div className="anim-fade-up flex flex-col items-center justify-center px-6 py-16 text-center">
       <div
-        className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-        style={{ background: "var(--surface-2)", color: "var(--muted)" }}
+        className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
+        style={{ background: "var(--surface-2)", color: "var(--muted)", boxShadow: "var(--shadow-sm)" }}
       >
         {icon}
       </div>
-      <h3 className="text-base font-bold">{title}</h3>
-      <p className="mt-1 max-w-sm text-[13px] text-muted">{message}</p>
-      {action && <div className="mt-4">{action}</div>}
+      <h3 className="text-lg font-bold text-ink">{title}</h3>
+      <p className="mt-1 max-w-md text-[13px] text-muted leading-relaxed">{message}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -640,21 +641,29 @@ export function StatCard({
     info: "var(--info-soft)",
     neutral: "var(--surface-2)",
   };
+  const toneColor: Partial<Record<BadgeTone, string>> = {
+    accent: "var(--accent)",
+    success: "var(--success)",
+    warn: "var(--warn)",
+    danger: "var(--danger)",
+    info: "var(--info)",
+    neutral: "var(--ink)",
+  };
   return (
     <Card
-      className={`p-4 ${onClick ? "transition-shadow hover:shadow-md" : ""}`}
+      className={`p-5 stat-card ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-3">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: toneBg[tone], color: tone === "neutral" ? "var(--ink)" : `var(--${tone})` }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+          style={{ background: toneBg[tone], color: toneColor[tone] ?? "var(--ink)" }}
         >
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-xs font-semibold text-muted">{label}</div>
-          <div className="truncate text-lg leading-tight font-extrabold tracking-tight">{value}</div>
+          <div className="truncate text-xs font-semibold text-muted uppercase tracking-[0.06em]">{label}</div>
+          <div className="truncate text-xl leading-tight font-extrabold tracking-tight">{value}</div>
           {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
         </div>
       </div>

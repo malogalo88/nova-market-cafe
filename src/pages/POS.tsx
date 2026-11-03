@@ -417,11 +417,12 @@ export default function POS(): React.ReactElement {
                   role="tab"
                   aria-selected={category === c}
                   onClick={() => setCategory(c)}
-                  className="shrink-0 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition-colors"
+                  className="shrink-0 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition-all"
                   style={{
                     borderColor: category === c ? "transparent" : "var(--border)",
                     background: category === c ? "var(--accent)" : "var(--surface)",
-                    color: category === c ? "var(--accent-ink)" : "var(--muted)",
+                    color: category === c ? "var(--accent-ink)" : "var(--ink)",
+                    boxShadow: category === c ? "0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), var(--shadow-sm)" : "var(--shadow-sm)",
                   }}
                   aria-label={`Category: ${c}`}>
                   {c}
@@ -465,7 +466,7 @@ export default function POS(): React.ReactElement {
                       const res = store.addToCart(p.id);
                       if (!res.ok) toast.error(res.error);
                     }}
-                    className="group rounded-xl border p-4 text-left transition-colors hover-shadow-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    className="product-card group rounded-xl border p-4 text-left transition-colors hover-shadow-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
                     title={`${p.name} · ${p.sku}`}
                     aria-label={`${p.name}, ${fmtMoney(p.price, symbol)}${out ? ", out of stock" : `, ${p.stock} in stock`}`}
                   >
