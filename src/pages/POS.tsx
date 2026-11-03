@@ -18,6 +18,7 @@ import {
   Wallet,
   X,
   Download,
+  Mail,
 } from "lucide-react";
 import { useAppStore, calculateCart } from "../store/useStore";
 import { currentPerms } from "../store/useStore";
@@ -835,6 +836,24 @@ export default function POS(): React.ReactElement {
               <Button variant="secondary" onClick={() => downloadReceipt(completedTxn, db)}>
                 <Download size={15} /> Save
               </Button>
+              {completedTxn.customerId && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const customer = db.customers.find((c) => c.id === completedTxn.customerId);
+                    const email = customer?.email;
+                    if (!email) {
+                      toast.error("This customer has no email on file.");
+                      return;
+                    }
+                    const res = store.emailReceipt(completedTxn.id, email);
+                    if (res.ok) toast.success(`Receipt emailed to ${email}`);
+                    else toast.error(res.error);
+                  }}
+                >
+                  <Mail size={15} /> Email
+                </Button>
+              )}
             </div>
             <Button
               variant="primary"

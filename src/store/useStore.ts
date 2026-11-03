@@ -356,6 +356,7 @@ interface AppStoreState {
 
   completeSale: (input: CompleteSaleInput) => ActionResult<Transaction>;
   refundTransaction: (txnId: string, restock: boolean) => ActionResult<Transaction>;
+  emailReceipt: (txnId: string, toEmail?: string) => ActionResult;
 
   holdSale: (note?: string) => void;
   resumeHeldSale: (id: string) => void;
@@ -1432,6 +1433,33 @@ export const useAppStore = create<AppStoreState & PosSlice>((set, get) => {
       });
       if (!refunded) return { ok: false, error: "This transaction was already refunded." };
       return { ok: true, value: refunded };
+    },
+
+    emailReceipt: (txnId, toEmail) => {
+      const state = get();
+      const t = state.db.transactions.find((x) => x.id === txnId);
+      if (!t) return { ok: false, error: "Transaction not found." };
+      const email = toEmail || (t.customerId ? state.db.customers.find((c) => c.id === t.customerId)?.email : undefined);
+      if (!email) return { ok: false, error: "No email address on file for this customer." };
+
+      const emp = get().currentUser();
+      mutate((d) => {
+        d.notifications.unshift({
+          id: uid("ntf"),
+          type: "system",
+          title: "Receipt emailed",
+          message: `${t.number} receipt sent to ${email} by ${emp?.name ?? "staff"}.`,
+          date: new Date().toISOString(),
+          read: false,
+          link: "/transactions",
+        });
+        logActivity(d, {
+          type: "system",
+          action: "Emailed receipt",
+          detail: `${t.number} → ${email}`,
+        });
+      });
+      return { ok: true };
     },
 
     // ── Held sales ────────────────────────────────────────────────────────

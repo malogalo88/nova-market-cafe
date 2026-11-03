@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, Printer, ReceiptText, Undo2 } from "lucide-react";
+import { Download, Mail, Printer, ReceiptText, Undo2 } from "lucide-react";
 import { useAppStore } from "../store/useStore";
 import type { Transaction as Txn } from "../lib/types";
 import {
@@ -253,6 +253,24 @@ export default function Transactions(): React.ReactElement {
               <Button variant="secondary" onClick={() => downloadReceipt(detail, db)}>
                 <Download size={15} /> Save
               </Button>
+              {detail.customerId && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const customer = db.customers.find((c) => c.id === detail.customerId);
+                    const email = customer?.email;
+                    if (!email) {
+                      toast.error("This customer has no email on file.");
+                      return;
+                    }
+                    const res = store.emailReceipt(detail.id, email);
+                    if (res.ok) toast.success(`Receipt emailed to ${email}`);
+                    else toast.error(res.error);
+                  }}
+                >
+                  <Mail size={15} /> Email
+                </Button>
+              )}
             </>
           )
         }
