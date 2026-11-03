@@ -23,12 +23,15 @@ export class StoreAssistant {
   /** Main entry point. Understands natural phrasing like "how much did I make today?" */
   answer(question: string): string {
     const raw = question.trim();
+    if (!raw) return "Ask me anything about your store!";
+
     const q = raw.toLowerCase();
 
+    // Greetings first — keep separate from help
     if (this.isGreeting(q)) return this.greetingAnswer();
     if (this.isHelp(q)) return this.helpAnswer();
 
-    // Detect intent(s)
+    // Detect intent(s) with word scoring instead of rigid regex
     const intents = this.detectIntents(q);
 
     // Timeframe
@@ -47,31 +50,56 @@ export class StoreAssistant {
     const product = this.findProductMention(q);
     if (product) return this.productAnswer(product);
 
-    // Fallback: helpful suggestions based on words detected
+    // Fallback: helpful suggestions based on detected words
     return this.fallbackAnswer(q);
   }
 
-  /* ─── Intent detection ─── */
+  /* ─── Intent detection with word scoring ─── */
 
   private detectIntents(q: string): string[] {
+    const scores: Record<string, number> = {
+      revenue: 0,
+      sales: 0,
+      top: 0,
+      lowstock: 0,
+      customer: 0,
+    };
+
+    // Revenue signals
+    const revenueWords = ["revenue", "money", "made", "earn", "earning", "profit", "income", "sales total", "how much", "totals"];
+    for (const w of revenueWords) if (q.includes(w)) scores.revenue += 1;
+
+    // Sales/count signals
+    const salesWords = ["sale", "sold", "transaction", "order", "orders", "how many", "count", "customers served"];
+    for (const w of salesWords) if (q.includes(w)) scores.sales += 1;
+
+    // Top/best signals
+    const topWords = ["best", "top", "popular", "best-selling", "bestseller", "rank"];
+    for (const w of topWords) if (q.includes(w)) scores.top += 1;
+
+    // Stock signals
+    const stockWords = ["stock", "inventory", "low", "out of", "restock", "supply", "shelf"];
+    for (const w of stockWords) if (q.includes(w)) scores.lowstock += 1;
+
+    // Customer signals
+    const customerWords = ["customer", "client", "regular", "buyer", "people"];
+    for (const w of customerWords) if (q.includes(w)) scores.customer += 1;
+
+    // Collect intents that scored above threshold
     const intents: string[] = [];
+    const threshold = 1;
+    for (const [key, score] of Object.entries(scores)) {
+      if (score >= threshold) intents.push(key);
+    }
 
-    const patterns: Array<[string, RegExp[]]> = [
-      ["revenue", [/\brevenue\b/, /\bhow much did i make\b/, /\bhow much money\b/, /\btotal sales\b/, /\bmoney made\b/]],
-      ["sales", [/\bsales\b/, /\bhow many sale\b/, /\btransactions\b/, /\border count\b/]],
-      ["top", [/\btop\b/, /\bbest\b/, /\bpopular\b/, /\bbest.selling\b/]],
-      ["product", [/\bproduct\b/, /\bitem\b/, /\bstock\b/, /\binventory\b/]],
-      ["lowstock", [/\blow stock\b/, /\bout of stock\b/, /\bneed to restock\b/, /\brestock\b/]],
-      ["customer", [/\bcustomer\b/, /\bclients\b/, /\bregulars\b/]],
-    ];
-
-    for (const [intent, regexes] of patterns) {
-      if (regexes.some((r) => r.test(q))) intents.push(intent);
+    // Prioritize: if "revenue" and "sales" both match, revenue is more specific
+    if (intents.includes("revenue") && intents.includes("sales")) {
+      // Keep both if question asks about both money and count
     }
 
     // Disambiguate: "stock" alone usually means low-stock inventory, not product lookup
-    if (intents.includes("product") && intents.includes("lowstock")) {
-      intents.splice(intents.indexOf("product"), 1);
+    if (intents.includes("lowstock") && intents.includes("top")) {
+      // "top product" vs "low stock" - keep both, user might want both
     }
 
     return intents;
@@ -91,7 +119,7 @@ export class StoreAssistant {
   /* ─── Helpers ─── */
 
   private isGreeting(q: string): boolean {
-    return /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy)/.test(q);
+    return /^(hi|hello|hey|yo|sup|good morning|good afternoon|good evening|howdy|hiya|greetings)\b/.test(q);
   }
 
   private isHelp(q: string): boolean {
@@ -100,8 +128,8 @@ export class StoreAssistant {
 
   private extractTimeframe(q: string): "today" | "week" | "month" | "all" {
     if (/\btoday\b/.test(q)) return "today";
-    if (/\bthis week\b/.test(q) || /\bpast week\b/.test(q) || /\blast 7 days\b/.test(q)) return "week";
-    if (/\bthis month\b/.test(q) || /\bpast month\b/.test(q) || /\blast 30 days\b/.test(q)) return "month";
+    if (/\bthis week\b/.test(q) || /\bpast week\b/.test(q) || /\blast 7 days\b/.test(q) || /\bweek\b/.test(q)) return "week";
+    if (/\bthis month\b/.test(q) || /\bpast month\b/.test(q) || /\blast 30 days\b/.test(q) || /\bmonth\b/.test(q)) return "month";
     return "all";
   }
 
@@ -138,7 +166,7 @@ export class StoreAssistant {
   }
 
   private helpAnswer(): string {
-    return `I can answer questions about your store — no special phrasing needed. Try:
+    return `I can answer questions about your store — just ask naturally. Try:
 
 • "How much did I make today?"
 • "What's my best selling product?"
@@ -147,7 +175,7 @@ export class StoreAssistant {
 • "How many customers do I have?"
 • "What were my sales this week?"
 
-Just ask naturally!`;
+No special phrasing needed!`;
 
   }
 
@@ -248,7 +276,7 @@ Just ask naturally!`;
     if (active.length === 0) return null;
 
     // Remove common question words so they don't false-match
-    const noise = ["the", "a", "an", "about", "tell", "me", "what", "is", "are", "how", "much", "many", "did", "do", "i", "my", "today", "week", "month", "sales", "revenue", "stock", "inventory"];
+    const noise = ["the", "a", "an", "about", "tell", "me", "what", "is", "are", "how", "much", "many", "did", "do", "i", "my", "today", "week", "month", "sales", "revenue", "stock", "inventory", "can", "you", "tell", "me", "about"];
     const tokens = q.split(/\s+/).filter((w) => w.length > 2 && !noise.includes(w));
 
     // Score each product by how many of its words appear in the question
