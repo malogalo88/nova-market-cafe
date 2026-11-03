@@ -31,11 +31,15 @@ export class StoreAssistant {
     if (this.isGreeting(q)) return this.greetingAnswer();
     if (this.isHelp(q)) return this.helpAnswer();
 
-    // Detect intent(s) with word scoring instead of rigid regex
-    const intents = this.detectIntents(q);
-
     // Timeframe
     const timeframe = this.extractTimeframe(q);
+
+    // Detect intent(s) with word scoring
+    const intents = this.detectIntents(q);
+
+    // Check for a specific product mention — prioritize it, even if "stock" is in the question
+    const product = this.findProductMention(q);
+    if (product) return this.productAnswer(product);
 
     // If multiple intents, answer each
     if (intents.length > 1) {
@@ -45,10 +49,6 @@ export class StoreAssistant {
     if (intents.length === 1) {
       return this.answerIntent(intents[0], q, timeframe);
     }
-
-    // Try product lookup even without a clear intent
-    const product = this.findProductMention(q);
-    if (product) return this.productAnswer(product);
 
     // Fallback: helpful suggestions based on detected words
     return this.fallbackAnswer(q);
