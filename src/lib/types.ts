@@ -286,6 +286,8 @@ export interface Settings {
   nextPoNumber: number;
   nextQrNumber: number;
   qr: QrOrderSettings;
+  emailProvider: "resend" | null;
+  emailApiKey: string | null;
 }
 
 export interface CartLine {

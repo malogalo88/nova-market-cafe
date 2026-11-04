@@ -1010,10 +1010,11 @@ export async function handleApiRequest(
         lines.push("Sent from NovaPOS");
         const receiptText = lines.join("\n");
 
-        const resendKey = process.env.RESEND_API_KEY;
-        if (!resendKey) {
-          console.error("[send-receipt] RESEND_API_KEY not set");
-          json(res, 500, { ok: false, error: "Email sending is not configured." });
+        const resendKey = s.emailApiKey;
+        const emailProvider = s.emailProvider;
+        if (!resendKey || emailProvider !== "resend") {
+          console.error("[send-receipt] email API key not configured in Settings");
+          json(res, 400, { ok: false, error: "Email sending is not configured. Add your Resend API key in Settings &rarr; Email." });
           return;
         }
 

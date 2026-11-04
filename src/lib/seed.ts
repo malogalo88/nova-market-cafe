@@ -79,6 +79,8 @@ export function defaultSettings() {
       soundEnabled: true,
       instructions: "Scan, browse our menu and place your order. Pay at the counter when you collect.",
     },
+    emailProvider: null,
+    emailApiKey: null,
   };
 }
 

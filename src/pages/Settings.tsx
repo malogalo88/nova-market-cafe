@@ -21,6 +21,7 @@ import {
   Card,
   Field,
   Input,
+  Select,
   Textarea,
   Toggle,
   toast,
@@ -30,7 +31,7 @@ import { readFileAsText } from "../lib/csv";
 import { downloadJSON } from "../lib/storage";
 import { HelpLink } from "../help/HelpLink";
 
-type Tab = "business" | "currency" | "tax" | "receipts" | "payments" | "loyalty" | "qr" | "appearance" | "data";
+type Tab = "business" | "currency" | "tax" | "receipts" | "payments" | "loyalty" | "qr" | "appearance" | "data" | "email";
 
 const TABS: Array<{ id: Tab; label: string; qr?: boolean }> = [
   { id: "business", label: "Business" },
@@ -42,6 +43,7 @@ const TABS: Array<{ id: Tab; label: string; qr?: boolean }> = [
   { id: "qr", label: "QR Ordering", qr: true },
   { id: "appearance", label: "Appearance" },
   { id: "data", label: "Data" },
+  { id: "email", label: "Email" },
 ];
 
 export default function Settings(): React.ReactElement {
@@ -229,6 +231,39 @@ export default function Settings(): React.ReactElement {
           <p className="rounded-lg p-2.5 text-xs text-muted" style={{ background: "var(--surface-2)" }}>
             Receipts always show: business name{ s.logo ? ", logo" : "" }, address & phone, items, totals, cashier and date.
           </p>
+        </Card>
+      )}
+
+      {/* EMAIL */}
+      {tab === "email" && (
+        <Card className="max-w-xl space-y-4 p-5">
+          <Field label="Email provider">
+            <Select value={s.emailProvider ?? "none"} onChange={(e) => set("emailProvider", e.target.value === "none" ? null : "resend")}>
+              <option value="none">None (emailing disabled)</option>
+              <option value="resend">Resend</option>
+            </Select>
+          </Field>
+          {s.emailProvider === "resend" && (
+            <>
+              <Field label="Resend API key" hint="Paste your key from resend.com. Stored on this device only.">
+                <Input
+                  type="password"
+                  value={s.emailApiKey ?? ""}
+                  onChange={(e) => set("emailApiKey", e.target.value)}
+                  placeholder="re_xxxxxxxxxxxxxxxx"
+                />
+                <button
+                  onClick={() => set("emailApiKey", "")}
+                  className="mt-1 text-xs text-danger underline underline-offset-4 hover:text-danger"
+                >
+                  Clear key
+                </button>
+              </Field>
+              <p className="rounded-lg p-2.5 text-xs text-muted" style={{ background: "var(--surface-2)" }}>
+                Receipts are sent from <b>NovaPOS &lt;onboarding@resend.dev&gt;</b> to your customer&rsquo;s email. Free tier covers 3,000 emails/month. Get your key at <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-accent underline">resend.com</a>.
+              </p>
+            </>
+          )}
         </Card>
       )}
 
