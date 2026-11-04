@@ -147,3 +147,57 @@ export function printBarcodes(db: DB, productIds: string[]): void {
 
 // Small re-exports used by pages.
 export { fmtDateShort, dayKey };
+
+/** Build a plain-text receipt body suitable for an email. */
+export function buildPlainTextReceipt(txn: Transaction, db: DB): string {
+  const s = db.settings;
+  const lines: string[] = [];
+  lines.push(s.businessName);
+  lines.push(s.address);
+  lines.push(s.phone);
+  lines.push("");
+  lines.push(`Receipt #: ${txn.number}`);
+  lines.push(`Date: ${fmtDateTime(txn.date)}`);
+  lines.push(`Cashier: ${txn.employeeName}`);
+  if (txn.customerName) lines.push(`Customer: ${txn.customerName}`);
+  lines.push("");
+  lines.push("Item                          Qty   Price   Total");
+  lines.push("------------------------------------------------------------");
+  for (const it of txn.items) {
+    const name = it.name.padEnd(27, " ").slice(0, 27);
+    const qty = String(it.qty).padStart(3, " ");
+    const price = money(it.price, s.currencySymbol).padStart(7, " ");
+    const total = money(it.price * it.qty - it.lineDiscount, s.currencySymbol).padStart(7, " ");
+    lines.push(`${name} ${qty} ${price} ${total}`);
+  }
+  lines.push("------------------------------------------------------------");
+  lines.push(`Subtotal                    ${money(txn.subtotal, s.currencySymbol).padStart(10, " ")}`);
+  if (txn.discount > 0) lines.push(`Discount                    ${"-" + money(txn.discount, s.currencySymbol).padStart(9, " ")}`);
+  if (txn.pointsRedeemed > 0) lines.push(`Loyalty points              ${"included in discount".padStart(10, " ")}`);
+  if (txn.tax > 0) lines.push(`Tax (${(s.taxEnabled ? s.taxRate : 0).toFixed(1)}%)         ${money(txn.tax, s.currencySymbol).padStart(10, " ")}`);
+  if (txn.tip && txn.tip > 0) lines.push(`Tip                         ${money(txn.tip, s.currencySymbol).padStart(10, " ")}`);
+  lines.push(`TOTAL                       ${money(txn.total, s.currencySymbol).padStart(10, " ")}`);
+  lines.push(`Paid (${PAYMENT_LABELS[txn.paymentMethod]})   ${money(txn.amountPaid, s.currencySymbol).padStart(10, " ")}`);
+  if (txn.change !== 0) lines.push(`Change                      ${money(txn.change, s.currencySymbol).padStart(10, " ")}`);
+  lines.push("");
+  if (txn.note) lines.push(`Note: ${txn.note}`);
+  lines.push("");
+  lines.push(s.receiptFooter);
+  lines.push("");
+  lines.push("---");
+  lines.push("Sent from NovaPOS");
+  return lines.join("\n");
+}
+
+/** Build a mailto: URL that opens the user's email client with a pre-filled receipt. */
+export function mailtoReceipt(
+  toEmail: string,
+  txn: Transaction,
+  db: DB,
+  fromName?: string
+): string {
+  const s = db.settings;
+  const subject = encodeURIComponent(`Receipt ${txn.number} from ${s.businessName}`);
+  const body = encodeURIComponent(buildPlainTextReceipt(txn, db));
+  return `mailto:${toEmail}?subject=${subject}&body=${body}`;
+}

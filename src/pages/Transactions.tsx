@@ -18,7 +18,7 @@ import {
   type Column,
 } from "../components/ui";
 import { fmtDateTime, fmtMoney } from "../lib/format";
-import { downloadReceipt, printReceipt } from "../lib/receipts";
+import { downloadReceipt, printReceipt, mailtoReceipt } from "../lib/receipts";
 import { PAYMENT_LABELS } from "../lib/types";
 import { inRange, makeRange } from "../lib/analytics";
 
@@ -263,9 +263,8 @@ export default function Transactions(): React.ReactElement {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const res = store.emailReceipt(detail.id, email);
-                    if (res.ok) toast.success(`Receipt emailed to ${email}`);
-                    else toast.error(res.error);
+                    const url = mailtoReceipt(email, detail, db);
+                    window.open(url, "_blank");
                   }}
                 >
                   <Mail size={15} /> Email

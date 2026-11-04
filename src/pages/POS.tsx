@@ -27,7 +27,7 @@ import type { PaymentMethod, Transaction } from "../lib/types";
 import { PAYMENT_LABELS } from "../lib/types";
 import { Badge, Button, EmptyState, IconButton, Input, Modal, SearchInput, Select, Textarea, toast } from "../components/ui";
 import { fmtMoney } from "../lib/format";
-import { buildReceiptHTML, downloadReceipt, printReceipt } from "../lib/receipts";
+import { buildReceiptHTML, downloadReceipt, printReceipt, mailtoReceipt } from "../lib/receipts";
 
 const METHOD_ICONS: Record<PaymentMethod, React.ReactNode> = {
   cash: <Banknote size={17} />,
@@ -933,9 +933,8 @@ export default function POS(): React.ReactElement {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const res = store.emailReceipt(completedTxn.id, email);
-                    if (res.ok) toast.success(`Receipt emailed to ${email}`);
-                    else toast.error(res.error);
+                    const url = mailtoReceipt(email, completedTxn, db);
+                    window.open(url, "_blank");
                   }}
                 >
                   <Mail size={15} /> Email
