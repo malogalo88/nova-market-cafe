@@ -278,8 +278,7 @@ export default function Layout(): React.ReactElement {
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
       <aside
-        className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r lg:flex"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        className="glass fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r lg:flex"
       >
         {sidebarContent}
       </aside>
@@ -289,8 +288,7 @@ export default function Layout(): React.ReactElement {
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="anim-fade absolute inset-0 bg-black/50" onClick={() => setDrawerOpen(false)} />
           <aside
-            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r shadow-xl anim-fade-up"
-            style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+            className="glass absolute inset-y-0 left-0 flex w-64 flex-col border-r shadow-xl anim-fade-up"
           >
             {sidebarContent}
           </aside>
@@ -300,8 +298,7 @@ export default function Layout(): React.ReactElement {
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
         {/* Topbar */}
         <header
-          className="sticky top-0 z-40 flex h-14 items-center gap-1.5 border-b px-3 sm:px-4"
-          style={{ background: "color-mix(in srgb, var(--surface) 88%, transparent)", backdropFilter: "blur(8px)", borderColor: "var(--border)" }}
+          className="glass sticky top-0 z-40 flex h-14 items-center gap-1.5 border-b px-3 sm:px-4"
         >
           <IconButton label="Open menu" className="lg:hidden" onClick={() => setDrawerOpen(true)}>
             <Menu size={19} />

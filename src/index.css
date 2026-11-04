@@ -4,12 +4,12 @@
 
 /* ── Semantic theme tokens (swap automatically in dark mode) ───────────── */
 :root {
-  --bg: #f3f5fb;
+  --bg: #f2f4fb;
   --surface: #ffffff;
-  --surface-2: #eef2f8;
+  --surface-2: #eef2f9;
   --surface-3: #e4e9f2;
-  --border: #dbe1ea;
-  --ink: #0f1626;
+  --border: #d9e0ea;
+  --ink: #0e1425;
   --muted: #5c687a;
   --accent: #4f46e5;
   --accent-strong: #4338ca;
@@ -23,13 +23,18 @@
   --danger-soft: #fee2e2;
   --info: #0369a1;
   --info-soft: #e0f2fe;
-  --shadow-sm: 0 1px 2px 0 rgb(16 22 38 / 0.06);
-  --shadow-md: 0 4px 6px -1px rgb(16 22 38 / 0.08), 0 2px 4px -2px rgb(16 22 38 / 0.04);
-  --shadow-lg: 0 10px 15px -3px rgb(16 22 38 / 0.09), 0 4px 6px -4px rgb(16 22 38 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(16 22 38 / 0.08);
+  --shadow-md: 0 4px 6px -1px rgb(16 22 38 / 0.10), 0 2px 4px -2px rgb(16 22 38 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(16 22 38 / 0.10), 0 4px 6px -4px rgb(16 22 38 / 0.06);
+  --shadow-xl: 0 20px 25px -5px rgb(16 22 38 / 0.12), 0 8px 10px -6px rgb(16 22 38 / 0.08);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
 }
 
 .dark {
-  --bg: #0a0e1c;
+  --bg: #090b16;
   --surface: #111827;
   --surface-2: #172032;
   --surface-3: #1e293b;
@@ -48,9 +53,10 @@
   --danger-soft: #450a0a;
   --info: #38bdf8;
   --info-soft: #0c2c40;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.25), 0 2px 4px -2px rgb(0 0 0 / 0.15);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.25), 0 4px 6px -4px rgb(0 0 0 / 0.15);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.25);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.35), 0 8px 10px -6px rgb(0 0 0 / 0.25);
 }
 
 @theme inline {
@@ -156,7 +162,7 @@ body {
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--accent-strong);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent), var(--shadow-md);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent), var(--shadow-md), 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .btn-secondary {
     background: var(--surface);
@@ -166,6 +172,7 @@ body {
   .btn-secondary:hover:not(:disabled) {
     background: var(--surface-2);
     border-color: var(--border);
+    box-shadow: var(--shadow-md);
   }
   .btn-ghost {
     background: transparent;
@@ -174,6 +181,7 @@ body {
   .btn-ghost:hover:not(:disabled) {
     background: var(--surface-2);
     color: var(--ink);
+    box-shadow: var(--shadow-sm);
   }
   .btn-danger {
     background: var(--danger);
@@ -181,6 +189,7 @@ body {
   }
   .btn-danger:hover:not(:disabled) {
     filter: brightness(1.08);
+    box-shadow: var(--shadow-md);
   }
   .btn-danger-soft {
     background: var(--danger-soft);
@@ -188,6 +197,7 @@ body {
   }
   .btn-danger-soft:hover:not(:disabled) {
     filter: brightness(0.97);
+    box-shadow: var(--shadow-sm);
   }
   .btn-success {
     background: var(--success);
@@ -247,6 +257,7 @@ body {
   }
   .card:hover {
     border-color: color-mix(in srgb, var(--border) 70%, var(--ink) 10%);
+    box-shadow: var(--shadow-md);
   }
 
   .badge {
@@ -410,4 +421,42 @@ body {
 /* ── AI chat widget ─────────────────────────────────────────────────────── */
 .chat-enter {
   animation: fadeUp 0.35s ease both;
+}
+
+/* ── Glassmorphism ─────────────────────────────────────────────────────── */
+.glass {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* ── Typography ────────────────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+h1 { font-size: 1.875rem; line-height: 1.2; }
+h2 { font-size: 1.5rem; line-height: 1.25; }
+h3 { font-size: 1.25rem; line-height: 1.3; }
+
+.page-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.page-subtitle {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
