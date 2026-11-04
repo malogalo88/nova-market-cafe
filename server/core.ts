@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DB, QrOrder } from "../src/lib/types.js";
+import { PAYMENT_LABELS } from "../src/lib/types.js";
 import { normalizeDB } from "../src/lib/storage.js";
 import { applyPlaceQrOrder, logActivity, recordMovement } from "../src/lib/qrOrderCore.js";
 import type { DbStore } from "./store.js";
@@ -945,6 +946,108 @@ export async function handleApiRequest(
         return;
       }
 
+      // ── Email receipt via Resend ──────────────────────────────────────
+      if (req.method === "POST" && url.pathname === "/api/send-receipt") {
+        const employeeId = await tokenEmployeeId(req);
+        if (!employeeId) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const emp = (await store.get()).db.employees.find((e) => e.id === employeeId);
+        if (!emp) {
+          json(res, 401, { ok: false, error: "Sign in required." });
+          return;
+        }
+        const body = (await readBody(req)) as { txnId?: string; toEmail?: string } | null;
+        const txnId = typeof body?.txnId === "string" ? body.txnId : "";
+        const toEmail = typeof body?.toEmail === "string" ? body.toEmail : "";
+        if (!txnId || !toEmail) {
+          json(res, 400, { ok: false, error: "Missing txnId or toEmail." });
+          return;
+        }
+        const snap = await store.get();
+        const t = snap.db.transactions.find((x) => x.id === txnId);
+        if (!t) {
+          json(res, 404, { ok: false, error: "Transaction not found." });
+          return;
+        }
+        const s = snap.db.settings;
+        const money = (n: number, sym: string): string => `${sym}${Math.abs(n).toFixed(2)}`;
+        const lines: string[] = [];
+        lines.push(s.businessName);
+        lines.push(s.address);
+        lines.push(s.phone);
+        lines.push("");
+        lines.push(`Receipt #: ${t.number}`);
+        lines.push(`Date: ${t.date}`);
+        lines.push(`Cashier: ${t.employeeName}`);
+        if (t.customerName) lines.push(`Customer: ${t.customerName}`);
+        lines.push("");
+        lines.push("Item                          Qty   Price   Total");
+        lines.push("------------------------------------------------------------");
+        for (const it of t.items) {
+          const name = String(it.name ?? "").padEnd(27, " ").slice(0, 27);
+          const qty = String(it.qty).padStart(3, " ");
+          const price = money(it.price, s.currencySymbol).padStart(7, " ");
+          const total = money(it.price * it.qty - it.lineDiscount, s.currencySymbol).padStart(7, " ");
+          lines.push(`${name} ${qty} ${price} ${total}`);
+        }
+        lines.push("------------------------------------------------------------");
+        lines.push(`Subtotal                    ${money(t.subtotal, s.currencySymbol).padStart(10, " ")}`);
+        if (t.discount > 0) lines.push(`Discount                    ${"-" + money(t.discount, s.currencySymbol).padStart(9, " ")}`);
+        if (t.pointsRedeemed > 0) lines.push(`Loyalty points              ${"included in discount".padStart(10, " ")}`);
+        if (t.tax > 0) lines.push(`Tax (${(s.taxEnabled ? s.taxRate : 0).toFixed(1)}%)         ${money(t.tax, s.currencySymbol).padStart(10, " ")}`);
+        if (t.tip && t.tip > 0) lines.push(`Tip                         ${money(t.tip, s.currencySymbol).padStart(10, " ")}`);
+        lines.push(`TOTAL                       ${money(t.total, s.currencySymbol).padStart(10, " ")}`);
+        lines.push(`Paid (${PAYMENT_LABELS[t.paymentMethod]})   ${money(t.amountPaid, s.currencySymbol).padStart(10, " ")}`);
+        if (t.change !== 0) lines.push(`Change                      ${money(t.change, s.currencySymbol).padStart(10, " ")}`);
+        lines.push("");
+        if (t.note) lines.push(`Note: ${t.note}`);
+        lines.push("");
+        lines.push(s.receiptFooter);
+        lines.push("");
+        lines.push("---");
+        lines.push("Sent from NovaPOS");
+        const receiptText = lines.join("\n");
+
+        const resendKey = process.env.RESEND_API_KEY;
+        if (!resendKey) {
+          console.error("[send-receipt] RESEND_API_KEY not set");
+          json(res, 500, { ok: false, error: "Email sending is not configured." });
+          return;
+        }
+
+        try {
+          const resp = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: `NovaPOS <onboarding@resend.dev>`,
+              to: [toEmail],
+              subject: `Receipt ${t.number} from ${s.businessName}`,
+              text: receiptText,
+            }),
+          });
+          if (!resp.ok) {
+            const errText = await resp.text().catch(() => "");
+            console.error("[send-receipt] Resend error:", resp.status, errText);
+            json(res, 500, { ok: false, error: "Email service rejected the request." });
+            return;
+          }
+          const data = await resp.json();
+          json(res, 200, { ok: true, id: data.id });
+        } catch (err) {
+          console.error("[send-receipt] fetch failed:", err);
+          json(res, 502, { ok: false, error: "Could not reach email service." });
+          return;
+        }
+        return;
+      }
+
+      // ── Default: not found ──────────────────────────────────────────────
       json(res, 404, { ok: false, error: "Not found" });
     }
   }

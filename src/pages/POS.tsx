@@ -27,7 +27,7 @@ import type { PaymentMethod, Transaction } from "../lib/types";
 import { PAYMENT_LABELS } from "../lib/types";
 import { Badge, Button, EmptyState, IconButton, Input, Modal, SearchInput, Select, Textarea, toast } from "../components/ui";
 import { fmtMoney } from "../lib/format";
-import { buildReceiptHTML, downloadReceipt, printReceipt, mailtoReceipt } from "../lib/receipts";
+import { buildReceiptHTML, downloadReceipt, printReceipt } from "../lib/receipts";
 
 const METHOD_ICONS: Record<PaymentMethod, React.ReactNode> = {
   cash: <Banknote size={17} />,
@@ -926,15 +926,24 @@ export default function POS(): React.ReactElement {
               {completedTxn.customerId && (
                 <Button
                   variant="secondary"
-                  onClick={() => {
+                  onClick={async () => {
                     const customer = db.customers.find((c) => c.id === completedTxn.customerId);
                     const email = customer?.email;
                     if (!email) {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const url = mailtoReceipt(email, completedTxn, db);
-                    window.open(url, "_blank");
+                    const res = await fetch("/api/send-receipt", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ txnId: completedTxn.id, toEmail: email }),
+                    });
+                    const result = await res.json().catch(() => ({ ok: false }));
+                    if (result.ok) {
+                      toast.success(`Receipt emailed to ${email}`);
+                    } else {
+                      toast.error(result.error || "Could not send receipt.");
+                    }
                   }}
                 >
                   <Mail size={15} /> Email

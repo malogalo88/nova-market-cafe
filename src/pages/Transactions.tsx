@@ -18,7 +18,7 @@ import {
   type Column,
 } from "../components/ui";
 import { fmtDateTime, fmtMoney } from "../lib/format";
-import { downloadReceipt, printReceipt, mailtoReceipt } from "../lib/receipts";
+import { downloadReceipt, printReceipt } from "../lib/receipts";
 import { PAYMENT_LABELS } from "../lib/types";
 import { inRange, makeRange } from "../lib/analytics";
 
@@ -256,15 +256,24 @@ export default function Transactions(): React.ReactElement {
               {detail.customerId && (
                 <Button
                   variant="secondary"
-                  onClick={() => {
+                  onClick={async () => {
                     const customer = db.customers.find((c) => c.id === detail.customerId);
                     const email = customer?.email;
                     if (!email) {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const url = mailtoReceipt(email, detail, db);
-                    window.open(url, "_blank");
+                    const res = await fetch("/api/send-receipt", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ txnId: detail.id, toEmail: email }),
+                    });
+                    const result = await res.json().catch(() => ({ ok: false }));
+                    if (result.ok) {
+                      toast.success(`Receipt emailed to ${email}`);
+                    } else {
+                      toast.error(result.error || "Could not send receipt.");
+                    }
                   }}
                 >
                   <Mail size={15} /> Email
