@@ -20,6 +20,7 @@ import {
 import { fmtDateTime, fmtMoney } from "../lib/format";
 import { downloadReceipt, printReceipt } from "../lib/receipts";
 import { PAYMENT_LABELS } from "../lib/types";
+import { api } from "../lib/storage";
 import { inRange, makeRange } from "../lib/analytics";
 
 export default function Transactions(): React.ReactElement {
@@ -263,9 +264,8 @@ export default function Transactions(): React.ReactElement {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const res = await fetch("/api/send-receipt", {
+                    const res = await api("/api/send-receipt", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ txnId: detail.id, toEmail: email }),
                     });
                     const result = await res.json().catch(() => ({ ok: false }));

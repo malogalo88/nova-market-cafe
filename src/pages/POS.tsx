@@ -28,6 +28,7 @@ import { PAYMENT_LABELS } from "../lib/types";
 import { Badge, Button, EmptyState, IconButton, Input, Modal, SearchInput, Select, Textarea, toast } from "../components/ui";
 import { fmtMoney } from "../lib/format";
 import { buildReceiptHTML, downloadReceipt, printReceipt } from "../lib/receipts";
+import { api } from "../lib/storage";
 
 const METHOD_ICONS: Record<PaymentMethod, React.ReactNode> = {
   cash: <Banknote size={17} />,
@@ -933,9 +934,8 @@ export default function POS(): React.ReactElement {
                       toast.error("This customer has no email on file.");
                       return;
                     }
-                    const res = await fetch("/api/send-receipt", {
+                    const res = await api("/api/send-receipt", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ txnId: completedTxn.id, toEmail: email }),
                     });
                     const result = await res.json().catch(() => ({ ok: false }));
