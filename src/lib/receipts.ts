@@ -189,6 +189,46 @@ export function buildPlainTextReceipt(txn: Transaction, db: DB): string {
   return lines.join("\n");
 }
 
+/** Build a WhatsApp message body for a receipt. */
+export function buildWhatsAppMessage(txn: Transaction, db: DB): string {
+  const s = db.settings;
+  const lines: string[] = [];
+  lines.push(`*${s.businessName}*`);
+  lines.push(`Receipt #${txn.number}`);
+  lines.push(`Date: ${txn.date}`);
+  lines.push(`Cashier: ${txn.employeeName}`);
+  if (txn.customerName) lines.push(`Customer: ${txn.customerName}`);
+  lines.push("");
+  lines.push("*Items:*");
+  for (const it of txn.items) {
+    lines.push(`• ${it.name} ×${it.qty} — ${money(it.price * it.qty - it.lineDiscount, s.currencySymbol)}`);
+  }
+  lines.push("");
+  lines.push(`Subtotal: ${money(txn.subtotal, s.currencySymbol)}`);
+  if (txn.discount > 0) lines.push(`Discount: -${money(txn.discount, s.currencySymbol)}`);
+  if (txn.tax > 0) lines.push(`Tax: ${money(txn.tax, s.currencySymbol)}`);
+  if (txn.tip && txn.tip > 0) lines.push(`Tip: ${money(txn.tip, s.currencySymbol)}`);
+  lines.push(`*Total: ${money(txn.total, s.currencySymbol)}*`);
+  lines.push(`Paid: ${PAYMENT_LABELS[txn.paymentMethod]} ${money(txn.amountPaid, s.currencySymbol)}`);
+  if (txn.change !== 0) lines.push(`Change: ${money(txn.change, s.currencySymbol)}`);
+  if (txn.note) lines.push(`\nNote: ${txn.note}`);
+  lines.push(`\n${s.receiptFooter}`);
+  lines.push(`\n— Sent from NovaPOS`);
+  return lines.join("\n");
+}
+
+/** Build a WhatsApp click-to-chat URL with a pre-filled receipt message. */
+export function whatsappReceipt(
+  phone: string,
+  txn: Transaction,
+  db: DB
+): string {
+  const message = encodeURIComponent(buildWhatsAppMessage(txn, db));
+  // Strip non-digits from phone, ensure country code prefix
+  const digits = phone.replace(/\D/g, "");
+  return `https://wa.me/${digits}?text=${message}`;
+}
+
 /** Build a mailto: URL that opens the user's email client with a pre-filled receipt. */
 export function mailtoReceipt(
   toEmail: string,

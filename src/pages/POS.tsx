@@ -20,6 +20,7 @@ import {
   X,
   Download,
   Mail,
+  MessageCircle,
 } from "lucide-react";
 import { useAppStore, calculateCart } from "../store/useStore";
 import { currentPerms } from "../store/useStore";
@@ -27,7 +28,7 @@ import type { PaymentMethod, Transaction } from "../lib/types";
 import { PAYMENT_LABELS } from "../lib/types";
 import { Badge, Button, EmptyState, IconButton, Input, Modal, SearchInput, Select, Textarea, toast } from "../components/ui";
 import { fmtMoney } from "../lib/format";
-import { buildReceiptHTML, downloadReceipt, printReceipt } from "../lib/receipts";
+import { buildReceiptHTML, downloadReceipt, printReceipt, whatsappReceipt } from "../lib/receipts";
 import { api } from "../lib/storage";
 
 const METHOD_ICONS: Record<PaymentMethod, React.ReactNode> = {
@@ -925,29 +926,46 @@ export default function POS(): React.ReactElement {
                 <Download size={15} /> Save
               </Button>
               {completedTxn.customerId && (
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    const customer = db.customers.find((c) => c.id === completedTxn.customerId);
-                    const email = customer?.email;
-                    if (!email) {
-                      toast.error("This customer has no email on file.");
-                      return;
-                    }
-                    const res = await api("/api/send-receipt", {
-                      method: "POST",
-                      body: JSON.stringify({ txnId: completedTxn.id, toEmail: email }),
-                    });
-                    const result = await res.json().catch(() => ({ ok: false }));
-                    if (result.ok) {
-                      toast.success(`Receipt emailed to ${email}`);
-                    } else {
-                      toast.error(result.error || "Could not send receipt.");
-                    }
-                  }}
-                >
-                  <Mail size={15} /> Email
-                </Button>
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      const customer = db.customers.find((c) => c.id === completedTxn.customerId);
+                      const email = customer?.email;
+                      if (!email) {
+                        toast.error("This customer has no email on file.");
+                        return;
+                      }
+                      const res = await api("/api/send-receipt", {
+                        method: "POST",
+                        body: JSON.stringify({ txnId: completedTxn.id, toEmail: email }),
+                      });
+                      const result = await res.json().catch(() => ({ ok: false }));
+                      if (result.ok) {
+                        toast.success(`Receipt emailed to ${email}`);
+                      } else {
+                        toast.error(result.error || "Could not send receipt.");
+                      }
+                    }}
+                  >
+                    <Mail size={15} /> Email
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const customer = db.customers.find((c) => c.id === completedTxn.customerId);
+                      const phone = customer?.phone;
+                      if (!phone) {
+                        toast.error("This customer has no phone number on file.");
+                        return;
+                      }
+                      const url = whatsappReceipt(phone, completedTxn, db);
+                      window.open(url, "_blank");
+                    }}
+                  >
+                    <MessageCircle size={15} /> WhatsApp
+                  </Button>
+                </>
               )}
             </div>
             <Button
