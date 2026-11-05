@@ -248,12 +248,24 @@ export default function Layout(): React.ReactElement {
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
-                    className={({ isActive }) =>
-                      `flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13.5px] font-semibold transition-colors ${
-                        isActive ? "text-accent-strong dark:text-accent" : "text-muted hover:text-ink hover:bg-surface-2"
-                      }`
-                    }
-                    style={({ isActive }) => (isActive ? { background: "var(--accent-soft)" } : undefined)}
+                    className={({ isActive }) => {
+                        const active = isActive;
+                        return `flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13.5px] font-semibold transition-all ${
+                          active
+                            ? "text-accent-strong dark:text-accent-strong"
+                            : "text-muted hover:text-ink hover:bg-surface-2"
+                        }`;
+                      }}
+                    style={({ isActive }) => {
+                        const active = isActive;
+                        return active
+                          ? {
+                              background: "linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent) 20%, transparent))",
+                              boxShadow: "var(--glow)",
+                              borderRight: "3px solid var(--accent-strong)",
+                            }
+                          : undefined;
+                      }}
                   >
                     <item.icon size={17} strokeWidth={2.2} />
                     <span className="flex-1 truncate text-[13px] font-medium">{item.label}</span>

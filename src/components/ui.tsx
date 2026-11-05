@@ -316,14 +316,49 @@ export function EmptyState({
   return (
     <div className="anim-fade-up flex flex-col items-center justify-center px-6 py-16 text-center">
       <div
-        className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
-        style={{ background: "var(--surface-2)", color: "var(--muted)", boxShadow: "var(--shadow-sm)" }}
+        className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl"
+        style={{
+          background: "linear-gradient(135deg, var(--surface-2), var(--surface-3))",
+          color: "var(--muted)",
+          boxShadow: "var(--shadow-sm)",
+        }}
       >
-        {icon}
+        <span className="text-3xl">{icon}</span>
       </div>
-      <h3 className="text-lg font-bold text-ink">{title}</h3>
-      <p className="mt-1 max-w-md text-[13px] text-muted leading-relaxed">{message}</p>
-      {action && <div className="mt-5">{action}</div>}
+      <h3 className="text-xl font-bold text-ink tracking-tight">{title}</h3>
+      <p className="mt-2 max-w-md text-[13px] text-muted leading-relaxed">{message}</p>
+      {action && <div className="mt-6">{action}</div>}
+    </div>
+  );
+}
+
+/* ─── Skeleton loader ──────────────────────────────────────────────────────── */
+export function Skeleton({ className = "" }: { className?: string }): React.ReactElement {
+  return (
+    <div
+      className={`animate-pulse rounded-md bg-surface-2 ${className}`}
+      style={{ background: "linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%)", backgroundSize: "200% 100%", animationDuration: "1.5s" }}
+    />
+  );
+}
+
+export function SkeletonText({ lines = 3, className = "" }: { lines?: number; className?: string }): React.ReactElement {
+  return (
+    <div className={`flex flex-col gap-3 ${className}`}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton key={i} className={`h-4 w-${i === lines - 1 ? "60" : "100"} rounded-sm`} />
+      ))}
+    </div>
+  );
+}
+
+export function ProductPlaceholder({ className = "" }: { className?: string }): React.ReactElement {
+  return (
+    <div
+      className={`relative rounded-2xl overflow-hidden bg-surface-2 ${className}`}
+      style={{ background: "linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%)", backgroundSize: "200% 100%", animationDuration: "1.5s", animation: "animate-pulse" }}
+    >
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-surface-3/40 to-transparent" />
     </div>
   );
 }
