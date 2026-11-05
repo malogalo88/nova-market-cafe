@@ -33,6 +33,7 @@ import { Badge, IconButton, Modal, toast } from "./ui";
 import { AIChat } from "./AIChat";
 import { relativeTime } from "../lib/format";
 import { setChatNotifier, startChatPresence, stopChatPresence, useChatSnapshot } from "../lib/chat";
+import { THEME_VARIANTS, type ThemeVariant } from "../lib/types";
 
 interface NavItem {
   to: string;
@@ -256,6 +257,7 @@ export default function Layout(): React.ReactElement {
                   >
                     <item.icon size={17} strokeWidth={2.2} />
                     <span className="flex-1 truncate text-[13px] font-medium">{item.label}</span>
+                    <NavDecoration to={item.to} variant={db.settings.themeVariant} />
                     {item.to === "/purchase-orders" && db.purchaseOrders.some((po) => po.status === "ordered") && (
                       <Badge tone="info">In transit</Badge>
                     )}
@@ -412,6 +414,7 @@ export default function Layout(): React.ReactElement {
                 style={{ background: "var(--accent)" }}
               >
                 {initials(user?.name ?? "?")}
+                <ThemeDecoration type="user" variant={db.settings.themeVariant} />
               </span>
               <span className="hidden max-w-28 truncate text-[13px] sm:block">{user?.name}</span>
             </button>
@@ -499,4 +502,48 @@ export function initials(name: string): string {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+/* ─── Seasonal theme decorations ────────────────────────────────────── */
+
+const THEME_EMOJIS: Record<ThemeVariant, { nav: Record<string, string>; user: string }> = {
+  modern: { nav: {}, user: "" },
+  cafe: { nav: {}, user: "" },
+  ocean: { nav: {}, user: "" },
+  sunset: { nav: {}, user: "" },
+  midnight: { nav: {}, user: "" },
+  christmas: {
+    nav: {
+      "/pos": "🎅",
+      "/products": "🎁",
+      "/inventory": "❄️",
+      "/customers": "🦌",
+      "/purchase-orders": "🛷",
+    },
+    user: "🎅",
+  },
+  halloween: {
+    nav: {
+      "/pos": "🎃",
+      "/transactions": "🦴",
+      "/customers": "👻",
+      "/products": "🍬",
+      "/reports": "🕸️",
+    },
+    user: "🎃",
+  },
+};
+
+function ThemeDecoration({ type, variant }: { type: "nav" | "user"; variant: ThemeVariant }): JSX.Element | null {
+  const emojiMap = THEME_EMOJIS[variant];
+  if (type === "user") {
+    return <span className="user-decoration">{emojiMap.user}</span>;
+  }
+  return null;
+}
+
+function NavDecoration({ to, variant }: { to: string; variant: ThemeVariant }): JSX.Element | null {
+  const emoji = THEME_EMOJIS[variant]?.nav[to];
+  if (!emoji) return null;
+  return <span className="nav-decoration">{emoji}</span>;
 }

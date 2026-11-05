@@ -523,6 +523,30 @@ body {
   }
 }
 
+/* ── Theme decorations (seasonal emojis on nav & user chip) ───────────── */
+.theme-decoration {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.nav-decoration {
+  font-size: 11px;
+  margin-left: 4px;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--ink) 20%, transparent));
+}
+
+.user-decoration {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 10px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--ink) 30%, transparent));
+  pointer-events: none;
+}
+
 /* ── Animations ───────────── */
 @keyframes fadeUp {
   from {
