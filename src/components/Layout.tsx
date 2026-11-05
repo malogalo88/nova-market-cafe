@@ -187,6 +187,7 @@ export default function Layout(): React.ReactElement {
   const [bellOpen, setBellOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [aiChatOpen, setAIChatOpen] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const [isExiting, setIsExiting] = useState(false);
   const prevPathname = useRef(location.pathname);
 
@@ -220,6 +221,18 @@ export default function Layout(): React.ReactElement {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const win = window;
+      const doc = document.documentElement;
+      const top = win.pageYOffset || doc.scrollTop;
+      const bottom = doc.scrollHeight - win.innerHeight;
+      setScrollProgress(bottom ? (top / bottom) * 100 : 0);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
@@ -556,6 +569,12 @@ export default function Layout(): React.ReactElement {
 
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
       <AIChat open={aiChatOpen} onClose={() => setAIChatOpen(false)} />
+
+      {/* Scroll progress bar */}
+      <div
+        className="fixed top-0 left-0 right-0 h-1 z-[100]"
+        style={{ width: `${scrollProgress}%`, background: "var(--accent)", transformOrigin: "left" }}
+      />
     </div>
   );
 }

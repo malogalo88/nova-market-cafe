@@ -14,6 +14,7 @@ import {
   Smartphone,
   Tag,
   Trash2,
+  UserPlus,
   UserRound,
   Users,
   Wallet,
@@ -1012,6 +1013,39 @@ export default function POS(): React.ReactElement {
       <Modal open={receiptPreview && !!completedTxn} onClose={() => setReceiptPreview(false)} title="Receipt preview" width={380}>
         {completedTxn && <ReceiptIframe txnId={completedTxn.id} />}
       </Modal>
+
+      {/* ── Floating Action Button ──────────────────────────────────────────── */}
+      <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-2">
+        <Button
+          variant="ghost"
+          size="lg"
+          className="w-14 h-14 rounded-full shadow-lg shadow-accent/20 hover:shadow-accent/40 hover:scale-105 transition-all"
+          onClick={() => setMobileCartOpen(false)}
+          aria-label="New sale"
+        >
+          <ShoppingCart size={22} />
+        </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-10 h-10 rounded-full shadow-md"
+            onClick={() => setCustomerPickerOpen(true)}
+            aria-label="Add customer"
+          >
+            <UserPlus size={16} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-10 h-10 rounded-full shadow-md"
+            onClick={() => setDiscountOpen(true)}
+            aria-label="Discount"
+          >
+            <Tag size={16} />
+          </Button>
+        </div>
+      </div>
     </>
   );
 }

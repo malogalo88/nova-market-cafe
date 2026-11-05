@@ -461,8 +461,7 @@ export function Modal({
   if (!open) return null;
   return createPortal(
     <div
-      className="anim-fade fixed inset-0 z-[80] overflow-y-auto"
-      style={{ background: "rgba(8,12,24,.5)" }}
+      className="anim-fade fixed inset-0 z-[80] overflow-y-auto glass-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -753,5 +752,46 @@ export function GrowthBadge({ pct, invert = false }: { pct: number | null; inver
     <Badge tone={positive ? "success" : "danger"}>
       {pct >= 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}%
     </Badge>
+  );
+}
+
+/* ─── Sparkline mini-chart ──────────────────────────────────────────────────────── */
+export function Sparkline({ data, color = "var(--accent)", height = 24 }: { data: number[]; color?: string; height?: number }): React.ReactElement | null {
+  if (!data || data.length < 2) return null;
+
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * 100;
+    const y = 100 - ((v - min) / range) * 100;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <svg
+      className="w-full h-full"
+      width="100%"
+      height={height}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      style={{ display: "block" }}
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={points.split(" ")[0].split(",")[0]} cy={points.split(" ")[0].split(",")[1]} r="2" fill={color} />
+      <circle
+        cx={points.split(" ").slice(-1)[0].split(",")[0]}
+        cy={points.split(" ").slice(-1)[0].split(",")[1]}
+        r="2"
+        fill={color}
+      />
+    </svg>
   );
 }

@@ -523,6 +523,20 @@ body {
   }
 }
 
+.glass-header {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  box-shadow: inset 0 0 20px color-mix(in srgb, var(--accent) 10%, transparent), var(--shadow-sm);
+}
+
+.glass-backdrop {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
 /* ── Theme decorations (seasonal emojis on nav & user chip) ───────────── */
 .theme-decoration {
   display: inline-flex;
