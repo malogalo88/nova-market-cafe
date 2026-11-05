@@ -76,6 +76,8 @@ export default function POS(): React.ReactElement {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [category, setCategory] = useState("All");
   const [payOpen, setPayOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -91,10 +93,20 @@ export default function POS(): React.ReactElement {
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const customerSearchRef = useRef<HTMLInputElement>(null);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
 
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
   const [tip, setTip] = useState("");
+
+  // Debounce search input so we don't re-filter on every keystroke
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => setDebouncedSearch(search), 150);
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [search]);
 
   const enabledMethods = useMemo(
     () => (Object.keys(PAYMENT_LABELS) as PaymentMethod[]).filter((m) => db.settings.paymentMethods[m]),
@@ -139,7 +151,7 @@ export default function POS(): React.ReactElement {
   }, [db.products]);
 
   const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return db.products
       .filter((p) => p.status === "active")
       .filter((p) => category === "All" || p.category === category)
@@ -150,7 +162,7 @@ export default function POS(): React.ReactElement {
           p.sku.toLowerCase().includes(q) ||
           (p.barcode ?? "").toLowerCase().includes(q)
       );
-  }, [db.products, search, category]);
+  }, [db.products, debouncedSearch, category]);
 
   function resetSaleState(): void {
     setNote("");
@@ -236,7 +248,10 @@ export default function POS(): React.ReactElement {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.length, payOpen, completedTxn]);
 
@@ -505,9 +520,14 @@ export default function POS(): React.ReactElement {
                     disabled={out}
                     onClick={() => {
                       const res = store.addToCart(p.id);
-                      if (!res.ok) toast.error(res.error);
+                      if (!res.ok) {
+                        toast.error(res.error);
+                      } else {
+                        setJustAdded(p.id);
+                        setTimeout(() => setJustAdded(null), 600);
+                      }
                     }}
-                    className="product-card group rounded-2xl border p-5 text-left transition-all hover-shadow-lg disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus-ring-accent focus:ring-offset-2"
+                    className={`product-card group rounded-2xl border p-5 text-left transition-all hover-shadow-lg disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus-ring-accent focus:ring-offset-2 ${justAdded === p.id ? "ring-2 ring-accent scale-[1.02] shadow-[0_0_20px_color-mix(in_srgb_var(--accent)_50%_transparent)]" : ""}`}
                     style={{
                       borderColor: out ? "var(--border)" : "var(--border)",
                       background: out ? "color-mix(in srgb, var(--danger) 5%, transparent)" : "var(--surface)",

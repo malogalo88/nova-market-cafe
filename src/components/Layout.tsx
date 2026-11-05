@@ -35,6 +35,38 @@ import { relativeTime } from "../lib/format";
 import { setChatNotifier, startChatPresence, stopChatPresence, useChatSnapshot } from "../lib/chat";
 import { THEME_VARIANTS, type ThemeVariant } from "../lib/types";
 
+// ─── Route prefetch map ─────────────────────────────────────────────
+// Hovering a nav link preloads its lazy chunk so the page feels instant.
+const ROUTE_PRELOADS: Record<string, () => Promise<{ default: unknown }>> = {
+  "/": () => import("../pages/Dashboard"),
+  "/pos": () => import("../pages/POS"),
+  "/products": () => import("../pages/Products"),
+  "/inventory": () => import("../pages/Inventory"),
+  "/transactions": () => import("../pages/Transactions"),
+  "/customers": () => import("../pages/Customers"),
+  "/employees": () => import("../pages/Employees"),
+  "/suppliers": () => import("../pages/Suppliers"),
+  "/purchase-orders": () => import("../pages/PurchaseOrders"),
+  "/promotions": () => import("../pages/Promotions"),
+  "/expenses": () => import("../pages/Expenses"),
+  "/reports": () => import("../pages/Reports"),
+  "/notifications": () => import("../pages/Notifications"),
+  "/qr": () => import("../pages/QrCodes"),
+  "/chat": () => import("../pages/StaffChat"),
+  "/help": () => import("../pages/Help"),
+  "/settings": () => import("../pages/Settings"),
+};
+
+const prefetched = new Set<string>();
+function prefetchRoute(to: string): void {
+  if (prefetched.has(to)) return;
+  const fn = ROUTE_PRELOADS[to];
+  if (fn) {
+    prefetched.add(to);
+    void fn();
+  }
+}
+
 interface NavItem {
   to: string;
   label: string;
@@ -248,6 +280,7 @@ export default function Layout(): React.ReactElement {
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
+                    onMouseEnter={() => prefetchRoute(item.to)}
                     className={({ isActive }) => {
                         const active = isActive;
                         return `flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13.5px] font-semibold transition-all ${
