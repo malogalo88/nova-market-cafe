@@ -445,6 +445,22 @@ body {
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
+.glass-fixed {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow-xl);
+}
+
+.glass-sidebar {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent), var(--shadow-xl);
+}
+
 /* ── Typography ───────────── */
 h1, h2, h3, h4 {
   font-weight: 700;

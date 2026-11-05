@@ -278,7 +278,7 @@ export default function Layout(): React.ReactElement {
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
       <aside
-        className="glass fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r lg:flex"
+        className="glass-fixed fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r lg:flex"
       >
         {sidebarContent}
       </aside>
@@ -288,7 +288,7 @@ export default function Layout(): React.ReactElement {
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="anim-fade absolute inset-0 bg-black/50" onClick={() => setDrawerOpen(false)} />
           <aside
-            className="glass absolute inset-y-0 left-0 flex w-64 flex-col border-r shadow-xl anim-fade-up"
+            className="glass-sidebar absolute inset-y-0 left-0 flex w-64 flex-col border-r shadow-2xl anim-fade-up"
           >
             {sidebarContent}
           </aside>
