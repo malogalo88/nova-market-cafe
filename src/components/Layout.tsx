@@ -298,7 +298,7 @@ export default function Layout(): React.ReactElement {
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
         {/* Topbar */}
         <header
-          className="glass sticky top-0 z-40 flex h-14 items-center gap-1.5 border-b px-3 sm:px-4"
+          className="glass-header sticky top-0 z-40 flex h-14 items-center gap-1.5 border-b px-3 sm:px-4"
         >
           <IconButton label="Open menu" className="lg:hidden" onClick={() => setDrawerOpen(true)}>
             <Menu size={19} />
