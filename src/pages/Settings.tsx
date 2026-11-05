@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import {
   Building2,
   CheckCircle2,
+  Circle,
   Database,
   Download,
   Heart,
@@ -15,7 +16,7 @@ import {
   Wifi,
 } from "lucide-react";
 import { useAppStore } from "../store/useStore";
-import { PAYMENT_LABELS, type DB, type PaymentMethod } from "../lib/types";
+import { PAYMENT_LABELS, THEME_VARIANTS, type DB, type PaymentMethod, type ThemeVariant } from "../lib/types";
 import {
   Button,
   Card,
@@ -45,6 +46,10 @@ const TABS: Array<{ id: Tab; label: string; qr?: boolean }> = [
   { id: "data", label: "Data" },
   { id: "email", label: "Email" },
 ];
+
+function themeVariantBg(accent: string): string {
+  return `color-mix(in srgb, ${accent} 12%, var(--surface))`;
+}
 
 export default function Settings(): React.ReactElement {
   const db = useAppStore((s) => s.db);
@@ -427,7 +432,7 @@ export default function Settings(): React.ReactElement {
       {/* APPEARANCE */}
       {tab === "appearance" && (
         <Card className="max-w-xl space-y-4 p-5">
-          <SectionTitleSmall title="Theme" />
+          <SectionTitleSmall title={<span className="inline-flex items-center gap-2"><Palette size={15} /> Theme & appearance</span>} />
           <div className="flex gap-3">
             {(["light", "dark"] as const).map((t) => (
               <button
@@ -445,8 +450,38 @@ export default function Settings(): React.ReactElement {
               </button>
             ))}
           </div>
+
+          {/* Theme variants */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">Theme variant</p>
+            <div className="flex flex-wrap gap-3">
+              {THEME_VARIANTS.map((theme) => {
+                const isActive = s.themeVariant === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    onClick={() => set("themeVariant", theme.id)}
+                    className="flex flex-1 flex-col items-center gap-2 rounded-xl border p-4 transition-all"
+                    style={{
+                      borderColor: isActive ? theme.accent : "var(--border)",
+                      background: isActive ? themeVariantBg(theme.accent) : "var(--surface)",
+                      boxShadow: isActive ? `0 0 0 1px ${theme.accent}, var(--shadow-sm)` : "var(--shadow-sm)",
+                    }}
+                    aria-pressed={isActive}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg"
+                         style={{ background: isActive ? theme.accent : "var(--surface-3)", color: isActive ? "#ffffff" : "var(--muted)" }}>
+                      <Circle size={18} />
+                    </div>
+                    <span className="text-[12.5px] font-bold capitalize">{theme.label}</span>
+                    <span className="text-[10px] text-muted">{theme.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <p className="flex items-center gap-2 rounded-lg p-2.5 text-xs text-muted" style={{ background: "var(--surface-2)" }}>
-            <Palette size={14} /> Tip: press <kbd className="kbd">?</kbd> anywhere to see every keyboard shortcut.
+            <Palette size={14} /> Tip: Christmas and Halloween themes are seasonal — switch back anytime.
           </p>
         </Card>
       )}

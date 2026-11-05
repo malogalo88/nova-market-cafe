@@ -288,7 +288,27 @@ export interface Settings {
   qr: QrOrderSettings;
   emailProvider: "resend" | null;
   emailApiKey: string | null;
+  themeVariant: ThemeVariant;
 }
+
+export type ThemeVariant =
+  | "modern"
+  | "cafe"
+  | "ocean"
+  | "sunset"
+  | "midnight"
+  | "christmas"
+  | "halloween";
+
+export const THEME_VARIANTS: Array<{ id: ThemeVariant; label: string; description: string; accent: string }> = [
+  { id: "modern", label: "Modern", description: "Clean indigo and slate", accent: "#6366f1" },
+  { id: "cafe", label: "Cafe", description: "Warm amber and terracotta", accent: "#d97706" },
+  { id: "ocean", label: "Ocean", description: "Cool cyan and deep blue", accent: "#0891b2" },
+  { id: "sunset", label: "Sunset", description: "Vibrant orange and pink", accent: "#f97316" },
+  { id: "midnight", label: "Midnight", description: "Deep purple and black", accent: "#7c3aed" },
+  { id: "christmas", label: "Christmas", description: "Festive red and green", accent: "#dc2626" },
+  { id: "halloween", label: "Halloween", description: "Spooky orange and black", accent: "#f97316" },
+];
 
 export interface CartLine {
   productId: ID;

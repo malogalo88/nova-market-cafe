@@ -158,6 +158,12 @@ export default function Layout(): React.ReactElement {
   const unread = db.notifications.filter((n) => !n.read).length;
   const chatTotal = useChatSnapshot().totalUnread;
 
+  // 🎨 Apply theme variant to document root for CSS variable overrides
+  useEffect(() => {
+    const variant = db.settings.themeVariant ?? "modern";
+    document.documentElement.setAttribute("data-theme", variant);
+  }, [db.settings.themeVariant]);
+
   // 💬 Staff chat: presence heartbeat + global message notifications for the
   // whole staff area. Runs while any staff page is open; stops on unmount.
   useEffect(() => {

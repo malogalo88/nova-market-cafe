@@ -81,6 +81,7 @@ export function defaultSettings() {
     },
     emailProvider: null,
     emailApiKey: null,
+    themeVariant: "modern" as const,
   };
 }
 

@@ -63,6 +63,173 @@
   --glow: 0 0 24px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+/* ── Theme variant overrides ───────────── */
+[data-theme="cafe"] {
+  --accent: #d97706;
+  --accent-strong: #b45309;
+  --accent-soft: #fdf4e3;
+  --accent-glow: #fdba74;
+  --accent-ink: #ffffff;
+  --success: #15803d;
+  --warn: #d97706;
+  --danger: #dc2626;
+}
+[data-theme="cafe"].dark {
+  --accent: #fbbf24;
+  --accent-strong: #fcd34d;
+  --accent-soft: #451a03;
+  --accent-glow: #fde047;
+  --accent-ink: #451a03;
+}
+
+[data-theme="ocean"] {
+  --accent: #0891b2;
+  --accent-strong: #0e7490;
+  --accent-soft: #e0f7fe;
+  --accent-glow: #22d3ee;
+  --accent-ink: #ffffff;
+  --success: #0ea5e9;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+}
+[data-theme="ocean"].dark {
+  --accent: #38bdf8;
+  --accent-strong: #7dd3fc;
+  --accent-soft: #0c4a6e;
+  --accent-glow: #67e8f9;
+  --accent-ink: #0c4a6e;
+}
+
+[data-theme="sunset"] {
+  --accent: #f97316;
+  --accent-strong: #ea580c;
+  --accent-soft: #fff1e6;
+  --accent-glow: #fb923c;
+  --accent-ink: #ffffff;
+  --success: #15803d;
+  --warn: #f97316;
+  --danger: #ef4444;
+}
+[data-theme="sunset"].dark {
+  --accent: #fb923c;
+  --accent-strong: #fdba74;
+  --accent-soft: #7c2d12;
+  --accent-glow: #fcd34d;
+  --accent-ink: #7c2d12;
+}
+
+[data-theme="midnight"] {
+  --accent: #7c3aed;
+  --accent-strong: #6d28d9;
+  --accent-soft: #f3e8ff;
+  --accent-glow: #a78bfa;
+  --accent-ink: #ffffff;
+  --success: #0ea5e9;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+}
+[data-theme="midnight"].dark {
+  --accent: #c084fc;
+  --accent-strong: #d8b4fe;
+  --accent-soft: #312e81;
+  --accent-glow: #d8b4fe;
+  --accent-ink: #312e81;
+}
+
+[data-theme="christmas"] {
+  --accent: #dc2626;
+  --accent-strong: #b91c1c;
+  --accent-soft: #fef2f2;
+  --accent-glow: #fca5a5;
+  --accent-ink: #ffffff;
+  --success: #16a34a;
+  --warn: #ca8a04;
+  --danger: #dc2626;
+}
+[data-theme="christmas"].dark {
+  --accent: #ef4444;
+  --accent-strong: #f87171;
+  --accent-soft: #450a0a;
+  --accent-glow: #f87171;
+  --accent-ink: #450a0a;
+}
+
+[data-theme="halloween"] {
+  --accent: #f97316;
+  --accent-strong: #ea580c;
+  --accent-soft: #fff4e6;
+  --accent-glow: #fb923c;
+  --accent-ink: #ffffff;
+  --success: #15803d;
+  --warn: #f97316;
+  --danger: #7c2d12;
+}
+[data-theme="halloween"].dark {
+  --accent: #fb923c;
+  --accent-strong: #fdba74;
+  --accent-soft: #451a03;
+  --accent-glow: #fcd34d;
+  --accent-ink: #451a03;
+}
+
+/* ── Theme surface adjustments ───────────── */
+[data-theme="christmas"] {
+  --surface-2: #fcf7f7;
+  --surface-3: #f7e7e7;
+}
+[data-theme="christmas"].dark {
+  --surface-2: #1a0f0f;
+  --surface-3: #241212;
+  --surface: #0f0d0d;
+}
+
+[data-theme="halloween"] {
+  --surface-2: #fff7ee;
+  --surface-3: #ffeeda;
+}
+[data-theme="halloween"].dark {
+  --surface-2: #0f0d0a;
+  --surface-3: #1a120f;
+  --surface: #0d0c0a;
+}
+
+[data-theme="midnight"] {
+  --surface-2: #f5f3ff;
+  --surface-3: #ecebff;
+}
+[data-theme="midnight"].dark {
+  --surface-2: #0c0a1e;
+  --surface-3: #16122c;
+  --surface: #0c0a16;
+}
+
+[data-theme="cafe"] {
+  --surface-2: #fdf9f1;
+  --surface-3: #faf1dd;
+}
+[data-theme="cafe"].dark {
+  --surface-2: #12100c;
+  --surface-3: #1e1912;
+}
+
+[data-theme="ocean"] {
+  --surface-2: #f0fbff;
+  --surface-3: #e4f4fb;
+}
+[data-theme="ocean"].dark {
+  --surface-2: #0d1622;
+  --surface-3: #161e2c;
+}
+
+[data-theme="sunset"] {
+  --surface-2: #fff7f2;
+  --surface-3: #ffeeda;
+}
+[data-theme="sunset"].dark {
+  --surface-2: #1a0f0a;
+  --surface-3: #241812;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -459,6 +626,14 @@ body {
   -webkit-backdrop-filter: blur(32px);
   border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   box-shadow: inset 0 0 40px color-mix(in srgb, var(--accent) 20%, transparent), var(--shadow-xl);
+}
+
+.glass-header {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  box-shadow: inset 0 0 20px color-mix(in srgb, var(--accent) 10%, transparent), var(--shadow-sm);
 }
 
 /* ── Typography ───────────── */
