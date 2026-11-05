@@ -571,6 +571,7 @@ export function DataTable<T extends { id: string }>({
   initialDesc = true,
   onRowClick,
   emptyState,
+  loading = false,
 }: {
   columns: Array<Column<T>>;
   rows: T[];
@@ -578,6 +579,7 @@ export function DataTable<T extends { id: string }>({
   initialDesc?: boolean;
   onRowClick?: (row: T) => void;
   emptyState?: React.ReactNode;
+  loading?: boolean;
 }): React.ReactElement {
   const [sortKey, setSortKey] = useState<string | null>(initialSortKey ?? null);
   const [desc, setDesc] = useState(initialDesc);
@@ -596,6 +598,44 @@ export function DataTable<T extends { id: string }>({
     });
     return arr;
   }, [rows, sortKey, desc, columns]);
+
+  if (loading) {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[540px] border-collapse text-[13.5px]">
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  className={`th ${c.hideOnMobile ? "hidden md:table-cell" : ""}`}
+                  style={{ textAlign: c.align ?? "left", cursor: c.sortValue ? "pointer" : "default" }}
+                >
+                  <span className="inline-flex items-center gap-1">{c.label}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <tr key={i} className="skeleton-row" style={{ borderBottom: "1px solid var(--border)" }}>
+                {columns.map((c, ci) => (
+                  <td
+                    key={ci}
+                    className={`td ${c.hideOnMobile ? "hidden md:table-cell" : ""}`}
+                    style={{ textAlign: c.align ?? "left" }}
+                  >
+                    <div className="skeleton-text h-4 w-3/4" />
+                    {ci === columns.length - 1 && <div className="skeleton-text h-4 w-1/3 mt-2" />}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   if (rows.length === 0 && emptyState) return <>{emptyState}</>;
 

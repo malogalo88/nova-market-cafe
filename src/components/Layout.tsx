@@ -187,6 +187,8 @@ export default function Layout(): React.ReactElement {
   const [bellOpen, setBellOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [aiChatOpen, setAIChatOpen] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
+  const prevPathname = useRef(location.pathname);
 
   const unread = db.notifications.filter((n) => !n.read).length;
   const chatTotal = useChatSnapshot().totalUnread;
@@ -224,6 +226,17 @@ export default function Layout(): React.ReactElement {
     setDrawerOpen(false);
     setBellOpen(false);
     setUserMenuOpen(false);
+  }, [location.pathname]);
+
+  // 🎬 Page route transitions — fade out on navigate, fade in on arrive
+  useEffect(() => {
+    if (prevPathname.current === location.pathname) return;
+    setIsExiting(true);
+    const t = setTimeout(() => {
+      prevPathname.current = location.pathname;
+      setIsExiting(false);
+    }, 180);
+    return () => clearTimeout(t);
   }, [location.pathname]);
 
   // 🔔 Live watcher: incoming QR customer orders → toast + optional chime.
@@ -496,7 +509,15 @@ export default function Layout(): React.ReactElement {
         </header>
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 pt-4 pb-20 sm:px-5 lg:pb-8">
-          <div className="page-enter"><Outlet /></div>
+          <div
+            className="page-enter"
+            style={{
+              opacity: isExiting ? 0 : 1,
+              transition: isExiting ? "opacity 180ms ease-out" : "opacity 250ms ease-in",
+            }}
+          >
+            <Outlet />
+          </div>
         </main>
 
         {/* Mobile bottom nav */}

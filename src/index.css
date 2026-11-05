@@ -608,6 +608,27 @@ body {
   animation: fadeUp 0.35s ease both;
 }
 
+.page-transition {
+  transition: opacity 200ms ease;
+}
+
+/* ── Skeleton loaders ───────────────────────────────────────────────────── */
+.skeleton-text {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: pulse 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-row {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .product-card {
   transition: all 0.2s ease;
 }
