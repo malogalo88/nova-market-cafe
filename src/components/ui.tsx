@@ -634,15 +634,15 @@ export function StatCard({
   onClick?: () => void;
 }): React.ReactElement {
   const toneBg: Partial<Record<BadgeTone, string>> = {
-    accent: "var(--accent-soft)",
-    success: "var(--success-soft)",
-    warn: "var(--warn-soft)",
-    danger: "var(--danger-soft)",
-    info: "var(--info-soft)",
+    accent: "linear-gradient(135deg, var(--accent-soft), var(--accent))",
+    success: "linear-gradient(135deg, var(--success-soft), var(--success))",
+    warn: "linear-gradient(135deg, var(--warn-soft), var(--warn))",
+    danger: "linear-gradient(135deg, var(--danger-soft), var(--danger))",
+    info: "linear-gradient(135deg, var(--info-soft), var(--info))",
     neutral: "var(--surface-2)",
   };
   const toneColor: Partial<Record<BadgeTone, string>> = {
-    accent: "var(--accent)",
+    accent: "var(--accent-strong)",
     success: "var(--success)",
     warn: "var(--warn)",
     danger: "var(--danger)",
@@ -651,19 +651,19 @@ export function StatCard({
   };
   return (
     <Card
-      className={`p-5 stat-card ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
+      className={`p-5 stat-card stat-glow ${onClick ? "cursor-pointer transition-shadow hover:shadow-lg" : ""}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-3">
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-lg"
           style={{ background: toneBg[tone], color: toneColor[tone] ?? "var(--ink)" }}
         >
           {icon}
         </div>
         <div className="min-w-0">
           <div className="truncate text-xs font-semibold text-muted uppercase tracking-[0.06em]">{label}</div>
-          <div className="truncate text-xl leading-tight font-extrabold tracking-tight">{value}</div>
+          <div className="truncate text-2xl leading-tight font-black tracking-tight">{value}</div>
           {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
         </div>
       </div>

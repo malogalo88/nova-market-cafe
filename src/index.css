@@ -2,61 +2,65 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ── Semantic theme tokens (swap automatically in dark mode) ───────────── */
+/* ── Semantic theme tokens (vibrant glass palette) ───────────── */
 :root {
-  --bg: #f2f4fb;
+  --bg: #f0f2fb;
   --surface: #ffffff;
-  --surface-2: #eef2f9;
-  --surface-3: #e4e9f2;
-  --border: #d9e0ea;
-  --ink: #0e1425;
-  --muted: #5c687a;
-  --accent: #4f46e5;
-  --accent-strong: #4338ca;
-  --accent-soft: #edeaff;
+  --surface-2: #f1f5ff;
+  --surface-3: #e7edff;
+  --border: #d7dffe;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-glow: #a5b4fc;
   --accent-ink: #ffffff;
-  --success: #059669;
-  --success-soft: #dcfce7;
-  --warn: #b45309;
+  --success: #10b981;
+  --success-soft: #d1fae5;
+  --warn: #f59e0b;
   --warn-soft: #fef3c7;
-  --danger: #dc2626;
+  --danger: #ef4444;
   --danger-soft: #fee2e2;
-  --info: #0369a1;
-  --info-soft: #e0f2fe;
-  --shadow-sm: 0 1px 3px 0 rgb(16 22 38 / 0.08);
-  --shadow-md: 0 4px 6px -1px rgb(16 22 38 / 0.10), 0 2px 4px -2px rgb(16 22 38 / 0.06);
-  --shadow-lg: 0 10px 15px -3px rgb(16 22 38 / 0.10), 0 4px 6px -4px rgb(16 22 38 / 0.06);
-  --shadow-xl: 0 20px 25px -5px rgb(16 22 38 / 0.12), 0 8px 10px -6px rgb(16 22 38 / 0.08);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --info: #3b82f6;
+  --info-soft: #dbeafe;
+  --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.08);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.10), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.10), 0 4px 6px -4px rgb(15 23 42 / 0.06);
+  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.12), 0 8px 10px -6px rgb(15 23 42 / 0.08);
+  --glow: 0 0 20px color-mix(in srgb, var(--accent) 35%, transparent);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
 }
 
 .dark {
-  --bg: #090b16;
+  --bg: #0a0e17;
   --surface: #111827;
   --surface-2: #172032;
   --surface-3: #1e293b;
   --border: #263046;
-  --ink: #eef2f7;
+  --ink: #f8fafc;
   --muted: #94a3b8;
-  --accent: #6366f1;
-  --accent-strong: #818cf8;
-  --accent-soft: #21254d;
-  --accent-ink: #ffffff;
+  --accent: #818cf8;
+  --accent-strong: #a5b4fc;
+  --accent-soft: #1e1b4b;
+  --accent-glow: #c7c7ff;
+  --accent-ink: #1e1b4b;
   --success: #34d399;
   --success-soft: #064e3b;
   --warn: #fbbf24;
   --warn-soft: #451a03;
   --danger: #f87171;
   --danger-soft: #450a0a;
-  --info: #38bdf8;
+  --info: #60a5fa;
   --info-soft: #0c2c40;
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.35);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.25);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.35), 0 8px 10px -6px rgb(0 0 0 / 0.25);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.45);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.45), 0 4px 6px -4px rgb(0 0 0 / 0.35);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.45), 0 8px 10px -6px rgb(0 0 0 / 0.35);
+  --glow: 0 0 24px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 @theme inline {
@@ -70,6 +74,7 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-glow: var(--accent-glow);
   --color-accent-ink: var(--accent-ink);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
@@ -122,7 +127,7 @@ body {
   border-radius: 4px;
 }
 
-/* ── Reusable primitives ───────────────────────────────────────────────── */
+/* ── Buttons (vibrant, glow on hover) ───────────── */
 @layer components {
   .btn {
     display: inline-flex;
@@ -131,18 +136,18 @@ body {
     gap: 0.45rem;
     font-weight: 600;
     font-size: 13.5px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     padding: 0.55rem 0.95rem;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.06s, box-shadow 0.15s;
+    transition: all 0.15s ease;
     white-space: nowrap;
     user-select: none;
     line-height: 1.2;
     box-shadow: var(--shadow-sm);
   }
   .btn:hover:not(:disabled) {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     box-shadow: var(--shadow-md);
   }
   .btn:active:not(:disabled) {
@@ -156,13 +161,13 @@ body {
     box-shadow: none;
   }
   .btn-primary {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
     color: var(--accent-ink);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), var(--shadow-sm);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--accent-strong);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent), var(--shadow-md), 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
+    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    box-shadow: var(--glow), var(--shadow-md);
   }
   .btn-secondary {
     background: var(--surface);
@@ -204,14 +209,14 @@ body {
     color: #04120c;
   }
   .btn-lg {
-    padding: 0.8rem 1.2rem;
+    padding: 0.85rem 1.3rem;
     font-size: 15px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
   }
   .btn-sm {
     padding: 0.35rem 0.65rem;
     font-size: 12.5px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
   }
 
   .input {
@@ -219,10 +224,10 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--ink);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     padding: 0.55rem 0.75rem;
     font-size: 14px;
-    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+    transition: all 0.15s ease;
     box-shadow: var(--shadow-sm);
   }
   .input::placeholder {
@@ -252,12 +257,18 @@ body {
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
   }
   .card:hover {
     border-color: color-mix(in srgb, var(--border) 70%, var(--ink) 10%);
     box-shadow: var(--shadow-md);
+  }
+  .card-glass {
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   }
 
   .badge {
@@ -277,7 +288,7 @@ body {
     text-align: left;
     font-size: 11.5px;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: var(--muted);
     font-weight: 700;
     padding: 0.6rem 0.85rem;
@@ -302,7 +313,7 @@ body {
   .tooltip-host::after {
     content: attr(data-tip);
     position: absolute;
-    bottom: calc(100% + 7px);
+    bottom: calc(100% + 8px);
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
@@ -310,14 +321,14 @@ body {
     font-size: 11.5px;
     font-weight: 500;
     line-height: 1.35;
-    padding: 0.32rem 0.55rem;
-    border-radius: 7px;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius-sm);
     white-space: pre-wrap;
     width: max-content;
-    max-width: 230px;
+    max-width: 240px;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.12s 0.25s;
+    transition: all 0.15s ease;
     z-index: 60;
   }
   .tooltip-host:hover::after,
@@ -326,7 +337,7 @@ body {
   }
   .tooltip-below::after {
     bottom: auto;
-    top: calc(100% + 7px);
+    top: calc(100% + 8px);
   }
 
   .kbd {
@@ -334,22 +345,22 @@ body {
     border: 1px solid var(--border);
     border-bottom-width: 2px;
     background: var(--surface-2);
-    color: var(--muted);
+    color: var(--ink);
     border-radius: 6px;
     font-size: 11px;
-    font-weight: 600;
-    padding: 0.08rem 0.4rem;
-    min-width: 22px;
+    font-weight: 700;
+    padding: 0.12rem 0.45rem;
+    min-width: 24px;
     text-align: center;
     font-family: inherit;
   }
 }
 
-/* ── Animations ────────────────────────────────────────────────────────── */
+/* ── Animations ───────────── */
 @keyframes fadeUp {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -364,6 +375,14 @@ body {
     opacity: 1;
   }
 }
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+}
 @keyframes toastIn {
   from {
     opacity: 0;
@@ -375,7 +394,7 @@ body {
   }
 }
 .anim-fade-up {
-  animation: fadeUp 0.22s ease both;
+  animation: fadeUp 0.3s ease both;
 }
 .anim-fade {
   animation: fadeIn 0.18s ease both;
@@ -393,13 +412,13 @@ body {
   }
 }
 
-/* ── Page entrance ───────────────────────────────────────────────────────── */
+/* ── Page & product cards ───────────── */
 .page-enter {
   animation: fadeUp 0.35s ease both;
 }
 
 .product-card {
-  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  transition: all 0.2s ease;
 }
 .product-card:hover {
   transform: translateY(-4px);
@@ -411,38 +430,33 @@ body {
 }
 
 .stat-card {
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: all 0.2s ease;
 }
 .stat-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }
 
-/* ── AI chat widget ─────────────────────────────────────────────────────── */
-.chat-enter {
-  animation: fadeUp 0.35s ease both;
-}
-
-/* ── Glassmorphism ─────────────────────────────────────────────────────── */
+/* ── Glassmorphism ───────────── */
 .glass {
   background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
-/* ── Typography ────────────────────────────────────────────────────────── */
+/* ── Typography ───────────── */
 h1, h2, h3, h4 {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
 }
-h1 { font-size: 1.875rem; line-height: 1.2; }
-h2 { font-size: 1.5rem; line-height: 1.25; }
-h3 { font-size: 1.25rem; line-height: 1.3; }
+h1 { font-size: 2rem; line-height: 1.15; }
+h2 { font-size: 1.5rem; line-height: 1.2; }
+h3 { font-size: 1.25rem; line-height: 1.25; }
 
 .page-title {
-  font-size: 1.875rem;
+  font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -450,6 +464,35 @@ h3 { font-size: 1.25rem; line-height: 1.3; }
 .page-subtitle {
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* ── Gradient text utility ───────────── */
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Stat glow ───────────── */
+.stat-glow {
+  position: relative;
+  overflow: hidden;
+}
+.stat-glow::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.stat-glow:hover::after {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

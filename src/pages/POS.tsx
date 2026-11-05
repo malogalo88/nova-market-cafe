@@ -507,16 +507,21 @@ export default function POS(): React.ReactElement {
                       const res = store.addToCart(p.id);
                       if (!res.ok) toast.error(res.error);
                     }}
-                    className="product-card group rounded-xl border p-4 text-left transition-colors hover-shadow-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    className="product-card group rounded-2xl border p-5 text-left transition-all hover-shadow-lg disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus-ring-accent focus:ring-offset-2"
+                    style={{
+                      borderColor: out ? "var(--border)" : "var(--border)",
+                      background: out ? "color-mix(in srgb, var(--danger) 5%, transparent)" : "var(--surface)",
+                    }}
                     title={`${p.name} · ${p.sku}`}
                     aria-label={`${p.name}, ${fmtMoney(p.price, symbol)}${out ? ", out of stock" : `, ${p.stock} in stock`}`}
                   >
-                    <div className="relative rounded-2xl mb-3 overflow-hidden group-hover:shadow-xl group-hover:border-accent">
+                    <div className="relative rounded-2xl mb-4 overflow-hidden group-hover:border-accent group-hover:shadow-xl group-hover:shadow-accent/20">
+                      <div className="absolute inset-0 bg-gradient-to-t from-accent/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                       {p.image ? (
                         <img src={p.image} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : (
                         <span
-                          className="flex items-center justify-center h-24 w-full text-muted"
+                          className="flex items-center justify-center h-24 w-full text-muted bg-surface-2"
                           style={{ color: "var(--muted)" }}
                         >
                           {p.name.slice(0, 2).toUpperCase()}
